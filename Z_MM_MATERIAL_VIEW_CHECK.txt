@@ -14,6 +14,7 @@ TYPES: BEGIN OF ty_result,
          matnr        TYPE matnr,          " Malzeme numarasi
          maktx        TYPE maktx,          " Malzeme tanimi
          mtart        TYPE mtart,          " Malzeme turu
+         matkl        TYPE matkl,          " Mal grubu
          ersda        TYPE ersda,          " Yaratma tarihi
          werks        TYPE werks_d,        " Tesis
          lgort        TYPE lgort_d,        " Depo yeri
@@ -71,6 +72,7 @@ DATA: gv_missing TYPE string.
 SELECTION-SCREEN BEGIN OF BLOCK b01 WITH FRAME TITLE TEXT-b01.
   SELECT-OPTIONS: s_matnr FOR gs_mara-matnr,          " Malzeme no
                   s_mtart FOR gs_mara-mtart,           " Malzeme turu
+                  s_matkl FOR gs_mara-matkl,           " Mal grubu
                   s_ersda FOR gs_mara-ersda,           " Yaratma tarihi
                   s_werks FOR gs_marc-werks.            " Tesis
 SELECTION-SCREEN END OF BLOCK b01.
@@ -118,6 +120,7 @@ FORM get_data.
     INTO TABLE gt_mara
     WHERE matnr IN s_matnr
       AND mtart IN s_mtart
+      AND matkl IN s_matkl
       AND ersda IN s_ersda.
 
   IF gt_mara IS INITIAL.
@@ -195,6 +198,7 @@ FORM check_views.
     READ TABLE gt_mara INTO gs_mara WITH KEY matnr = gs_marc-matnr.
     IF sy-subrc = 0.
       gs_result-mtart = gs_mara-mtart.
+      gs_result-matkl = gs_mara-matkl.
       gs_result-ersda = gs_mara-ersda.
     ENDIF.
 
@@ -697,6 +701,12 @@ FORM display_alv.
           go_column->set_short_text( 'Malz.Tur' ).
           go_column->set_medium_text( 'Malzeme Turu' ).
           go_column->set_long_text( 'Malzeme Turu' ).
+
+          " Mal Grubu
+          go_column = go_columns->get_column( 'MATKL' ).
+          go_column->set_short_text( 'MalGrb' ).
+          go_column->set_medium_text( 'Mal Grubu' ).
+          go_column->set_long_text( 'Mal Grubu' ).
 
           " Yaratma Tarihi
           go_column = go_columns->get_column( 'ERSDA' ).
