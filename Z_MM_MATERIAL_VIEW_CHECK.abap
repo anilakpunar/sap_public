@@ -18,7 +18,7 @@ TYPES: BEGIN OF ty_result,
          ernam        TYPE ernam,          " Yaratan kullanici
          ersda        TYPE ersda,          " Yaratma tarihi
          bukrs        TYPE bukrs,          " Sirket kodu
-         werks        TYPE werks_d,        " Tesis
+         werks        TYPE werks_d,        " Uretim yeri
          lgort        TYPE lgort_d,        " Depo yeri
          " Gorunum durumu ve detaylari
          basic_view   TYPE icon_d,         " Temel veri gorunumu
@@ -86,7 +86,7 @@ SELECTION-SCREEN BEGIN OF BLOCK b01 WITH FRAME TITLE TEXT-b01.
                   s_matkl FOR gs_mara-matkl,           " Mal grubu
                   s_ersda FOR gs_mara-ersda,           " Yaratma tarihi
                   s_bukrs FOR gs_t001k-bukrs,          " Sirket kodu
-                  s_werks FOR gs_marc-werks.            " Tesis
+                  s_werks FOR gs_marc-werks.            " Uretim yeri
 SELECTION-SCREEN END OF BLOCK b01.
 
 SELECTION-SCREEN BEGIN OF BLOCK b02 WITH FRAME TITLE TEXT-b02.
@@ -148,20 +148,20 @@ FORM get_data.
     WHERE matnr = gt_mara-matnr
       AND spras = sy-langu.
 
-  " Tesis - Sirket kodu eslesme tablosu (T001K)
+  " Uretim yeri - Sirket kodu eslesme tablosu (T001K)
   SELECT * FROM t001k
     INTO TABLE gt_t001k
     WHERE bukrs IN s_bukrs.
 
-  " Tesis verileri (MARC)
+  " Uretim yeri verileri (MARC)
   IF gt_t001k IS NOT INITIAL AND s_bukrs IS NOT INITIAL.
-    " Sirket kodu filtresi varsa sadece o sirketin tesislerini al
+    " Sirket kodu filtresi varsa sadece o sirketin uretim yerlerini al
     SELECT * FROM marc
       INTO TABLE gt_marc
       FOR ALL ENTRIES IN gt_mara
       WHERE matnr = gt_mara-matnr
         AND werks IN s_werks.
-    " Sirket koduna ait olmayan tesisleri cikar
+    " Sirket koduna ait olmayan uretim yerlerini cikar
     DATA: lt_marc_temp TYPE TABLE OF marc.
     LOOP AT gt_marc INTO gs_marc.
       READ TABLE gt_t001k INTO gs_t001k WITH KEY bwkey = gs_marc-werks.
@@ -225,7 +225,7 @@ FORM check_views.
 
   LOOP AT gt_mara INTO gs_mara.
 
-    " Bu malzemeye ait tesis kayitlarini kontrol et
+    " Bu malzemeye ait uretim yeri kayitlarini kontrol et
     lv_marc_found = abap_false.
 
     LOOP AT gt_marc INTO gs_marc WHERE matnr = gs_mara-matnr.
@@ -241,7 +241,7 @@ FORM check_views.
       gs_result-ersda = gs_mara-ersda.
       gs_result-werks = gs_marc-werks.
 
-      " Sirket kodunu tesis uzerinden belirle
+      " Sirket kodunu uretim yeri uzerinden belirle
       READ TABLE gt_t001k INTO gs_t001k WITH KEY bwkey = gs_marc-werks.
       IF sy-subrc = 0.
         gs_result-bukrs = gs_t001k-bukrs.
@@ -284,7 +284,7 @@ FORM check_views.
 
     ENDLOOP. " gt_marc
 
-    " Tesis kaydi yoksa malzemeyi yine de goster
+    " Uretim yeri kaydi yoksa malzemeyi yine de goster
     IF lv_marc_found = abap_false.
 
       CLEAR: gs_result, gv_detail, lv_has_missing.
@@ -311,46 +311,46 @@ FORM check_views.
         gs_result-basic_detail = gv_detail.
       ENDIF.
 
-      " Tesis kaydi olmayan gorunumler icin eksik isaretle
+      " Uretim yeri kaydi olmayan gorunumler icin eksik isaretle
       IF p_sales = 'X'.
         gs_result-sales_view = icon_led_red.
-        gs_result-sales_detail = 'Tesis kaydi yok'.
+        gs_result-sales_detail = 'Uretim yeri kaydi yok'.
         lv_has_missing = abap_true.
       ENDIF.
       IF p_purch = 'X'.
         gs_result-purch_view = icon_led_red.
-        gs_result-purch_detail = 'Tesis kaydi yok'.
+        gs_result-purch_detail = 'Uretim yeri kaydi yok'.
         lv_has_missing = abap_true.
       ENDIF.
       IF p_mrp = 'X'.
         gs_result-mrp_view = icon_led_red.
-        gs_result-mrp_detail = 'Tesis kaydi yok'.
+        gs_result-mrp_detail = 'Uretim yeri kaydi yok'.
         lv_has_missing = abap_true.
       ENDIF.
       IF p_acct = 'X'.
         gs_result-acct_view = icon_led_red.
-        gs_result-acct_detail = 'Tesis kaydi yok'.
+        gs_result-acct_detail = 'Uretim yeri kaydi yok'.
         lv_has_missing = abap_true.
       ENDIF.
       IF p_cost = 'X'.
         gs_result-cost_view = icon_led_red.
-        gs_result-cost_detail = 'Tesis kaydi yok'.
+        gs_result-cost_detail = 'Uretim yeri kaydi yok'.
         lv_has_missing = abap_true.
       ENDIF.
       IF p_store = 'X'.
         gs_result-store_view = icon_led_red.
-        gs_result-store_detail = 'Tesis kaydi yok'.
+        gs_result-store_detail = 'Uretim yeri kaydi yok'.
         lv_has_missing = abap_true.
       ENDIF.
       IF p_qual = 'X'.
         gs_result-qual_view = icon_led_red.
-        gs_result-qual_detail = 'Tesis kaydi yok'.
+        gs_result-qual_detail = 'Uretim yeri kaydi yok'.
         lv_has_missing = abap_true.
       ENDIF.
 
       " Genel durumu belirle
       gs_result-status = icon_led_red.
-      gs_result-status_text = 'Tesis Kaydi Yok'.
+      gs_result-status_text = 'Uretim Yeri Kaydi Yok'.
 
       IF p_miss = 'X'.
         IF lv_has_missing = abap_true.
@@ -375,7 +375,7 @@ ENDFORM.
 *&---------------------------------------------------------------------*
 *& Form RUN_VIEW_CHECKS
 *&---------------------------------------------------------------------*
-*& Tesis kaydi olan malzemeler icin tum gorunum kontrollerini calistirir
+*& Uretim yeri kaydi olan malzemeler icin tum gorunum kontrollerini calistirir
 *&---------------------------------------------------------------------*
 FORM run_view_checks USING    ps_mara TYPE mara
                               ps_marc TYPE marc
@@ -555,7 +555,7 @@ FORM check_sales_view USING    pv_matnr TYPE matnr
 *      IF pv_missing IS NOT INITIAL.
 *        CONCATENATE pv_missing '; ' INTO pv_missing.
 *      ENDIF.
-*      CONCATENATE pv_missing 'Teslimat tesisi bos' INTO pv_missing.
+*      CONCATENATE pv_missing 'Teslimat uretim yeri bos' INTO pv_missing.
 *    ENDIF.
 *
 *    IF ls_mvke-ktgrm IS INITIAL.
@@ -906,11 +906,11 @@ FORM display_alv.
           go_column->set_medium_text( 'Sirket Kodu' ).
           go_column->set_long_text( 'Sirket Kodu' ).
 
-          " Tesis
+          " Uretim Yeri
           go_column = go_columns->get_column( 'WERKS' ).
-          go_column->set_short_text( 'Tesis' ).
-          go_column->set_medium_text( 'Tesis' ).
-          go_column->set_long_text( 'Tesis' ).
+          go_column->set_short_text( 'Urt.Yeri' ).
+          go_column->set_medium_text( 'Uretim Yeri' ).
+          go_column->set_long_text( 'Uretim Yeri' ).
 
           " Depo Yeri
           go_column = go_columns->get_column( 'LGORT' ).
