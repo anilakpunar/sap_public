@@ -491,45 +491,42 @@ FORM check_basic_view USING    ps_mara  TYPE mara
                                pv_missing TYPE string
                                pv_has_missing TYPE abap_bool.
 
-  IF ps_mara-matnr IS NOT INITIAL.
-    " Temel veri gorunumu var
+  " Bakim durumu kontrolu: K = Temel veri gorunumu
+  IF ps_mara-pstat CS 'K'.
     ps_result-basic_view = icon_led_green.
 
-    " Temel verilerde eksik alan kontrolu
-    IF ps_mara-meins IS INITIAL.
-      ps_result-basic_view = icon_led_yellow.
-      pv_has_missing = abap_true.
-      IF pv_missing IS NOT INITIAL.
-        CONCATENATE pv_missing '; ' INTO pv_missing.
-      ENDIF.
-      CONCATENATE pv_missing 'Temel olcu birimi bos' INTO pv_missing.
-    ENDIF.
-
-    IF ps_mara-matkl IS INITIAL.
-      ps_result-basic_view = icon_led_yellow.
-      pv_has_missing = abap_true.
-      IF pv_missing IS NOT INITIAL.
-        CONCATENATE pv_missing '; ' INTO pv_missing.
-      ENDIF.
-      CONCATENATE pv_missing 'Malzeme grubu bos' INTO pv_missing.
-    ENDIF.
-
-    IF ps_mara-brgew IS INITIAL OR ps_mara-gewei IS INITIAL.
-      ps_result-basic_view = icon_led_yellow.
-      pv_has_missing = abap_true.
-      IF pv_missing IS NOT INITIAL.
-        CONCATENATE pv_missing '; ' INTO pv_missing.
-      ENDIF.
-      CONCATENATE pv_missing 'Brut agirlik/birimi bos' INTO pv_missing.
-    ENDIF.
+*    " Temel verilerde eksik alan kontrolu (sari uyarilar devre disi)
+*    IF ps_mara-meins IS INITIAL.
+*      ps_result-basic_view = icon_led_yellow.
+*      pv_has_missing = abap_true.
+*      IF pv_missing IS NOT INITIAL.
+*        CONCATENATE pv_missing '; ' INTO pv_missing.
+*      ENDIF.
+*      CONCATENATE pv_missing 'Temel olcu birimi bos' INTO pv_missing.
+*    ENDIF.
+*
+*    IF ps_mara-matkl IS INITIAL.
+*      ps_result-basic_view = icon_led_yellow.
+*      pv_has_missing = abap_true.
+*      IF pv_missing IS NOT INITIAL.
+*        CONCATENATE pv_missing '; ' INTO pv_missing.
+*      ENDIF.
+*      CONCATENATE pv_missing 'Malzeme grubu bos' INTO pv_missing.
+*    ENDIF.
+*
+*    IF ps_mara-brgew IS INITIAL OR ps_mara-gewei IS INITIAL.
+*      ps_result-basic_view = icon_led_yellow.
+*      pv_has_missing = abap_true.
+*      IF pv_missing IS NOT INITIAL.
+*        CONCATENATE pv_missing '; ' INTO pv_missing.
+*      ENDIF.
+*      CONCATENATE pv_missing 'Brut agirlik/birimi bos' INTO pv_missing.
+*    ENDIF.
 
   ELSE.
     ps_result-basic_view = icon_led_red.
     pv_has_missing = abap_true.
-    IF pv_missing IS NOT INITIAL.
-      CONCATENATE pv_missing '; ' INTO pv_missing.
-    ENDIF.
-    CONCATENATE pv_missing 'Temel veri gorunumu yok' INTO pv_missing.
+    pv_missing = 'Temel veri gorunumu yok (PSTAT: K eksik)'.
   ENDIF.
 
 ENDFORM.
@@ -544,36 +541,40 @@ FORM check_sales_view USING    pv_matnr TYPE matnr
 
   DATA: ls_mvke TYPE mvke.
 
+  " Bakim durumu kontrolu: V = Satis gorunumu
+  READ TABLE gt_mara INTO gs_mara WITH KEY matnr = pv_matnr.
+
   READ TABLE gt_mvke INTO ls_mvke WITH KEY matnr = pv_matnr.
-  IF sy-subrc = 0.
+  IF sy-subrc = 0 AND gs_mara-pstat CS 'V'.
     ps_result-sales_view = icon_led_green.
 
-    " Satis gorunumunde eksik alan kontrolu
-    IF ls_mvke-dwerk IS INITIAL.
-      ps_result-sales_view = icon_led_yellow.
-      pv_has_missing = abap_true.
-      IF pv_missing IS NOT INITIAL.
-        CONCATENATE pv_missing '; ' INTO pv_missing.
-      ENDIF.
-      CONCATENATE pv_missing 'Teslimat tesisi bos' INTO pv_missing.
-    ENDIF.
-
-    IF ls_mvke-ktgrm IS INITIAL.
-      ps_result-sales_view = icon_led_yellow.
-      pv_has_missing = abap_true.
-      IF pv_missing IS NOT INITIAL.
-        CONCATENATE pv_missing '; ' INTO pv_missing.
-      ENDIF.
-      CONCATENATE pv_missing 'Hesap atama grubu bos' INTO pv_missing.
-    ENDIF.
+*    " Satis gorunumunde eksik alan kontrolu (sari uyarilar devre disi)
+*    IF ls_mvke-dwerk IS INITIAL.
+*      ps_result-sales_view = icon_led_yellow.
+*      pv_has_missing = abap_true.
+*      IF pv_missing IS NOT INITIAL.
+*        CONCATENATE pv_missing '; ' INTO pv_missing.
+*      ENDIF.
+*      CONCATENATE pv_missing 'Teslimat tesisi bos' INTO pv_missing.
+*    ENDIF.
+*
+*    IF ls_mvke-ktgrm IS INITIAL.
+*      ps_result-sales_view = icon_led_yellow.
+*      pv_has_missing = abap_true.
+*      IF pv_missing IS NOT INITIAL.
+*        CONCATENATE pv_missing '; ' INTO pv_missing.
+*      ENDIF.
+*      CONCATENATE pv_missing 'Hesap atama grubu bos' INTO pv_missing.
+*    ENDIF.
 
   ELSE.
     ps_result-sales_view = icon_led_red.
     pv_has_missing = abap_true.
-    IF pv_missing IS NOT INITIAL.
-      CONCATENATE pv_missing '; ' INTO pv_missing.
+    IF gs_mara-pstat NS 'V'.
+      pv_missing = 'Satis gorunumu yok (PSTAT: V eksik)'.
+    ELSE.
+      pv_missing = 'Satis gorunumu yok (MVKE kaydi yok)'.
     ENDIF.
-    CONCATENATE pv_missing 'Satis gorunumu yok' INTO pv_missing.
   ENDIF.
 
 ENDFORM.
@@ -586,26 +587,30 @@ FORM check_purchasing_view USING    ps_marc TYPE marc
                                     pv_missing TYPE string
                                     pv_has_missing TYPE abap_bool.
 
-  IF ps_marc-ekgrp IS NOT INITIAL.
+  " Bakim durumu kontrolu: E = Satin alma gorunumu
+  READ TABLE gt_mara INTO gs_mara WITH KEY matnr = ps_marc-matnr.
+
+  IF ps_marc-ekgrp IS NOT INITIAL AND gs_mara-pstat CS 'E'.
     ps_result-purch_view = icon_led_green.
+
+*    " Satin alma deger anahtari kontrolu (sari uyarilar devre disi)
+*    IF ps_marc-kordb IS INITIAL AND ps_marc-ekgrp IS NOT INITIAL.
+*      ps_result-purch_view = icon_led_yellow.
+*      pv_has_missing = abap_true.
+*      IF pv_missing IS NOT INITIAL.
+*        CONCATENATE pv_missing '; ' INTO pv_missing.
+*      ENDIF.
+*      CONCATENATE pv_missing 'Satinalma kayit profili bos' INTO pv_missing.
+*    ENDIF.
+
   ELSE.
-    " Satin alma grubu bos ise gorunum eksik kabul edilir
     ps_result-purch_view = icon_led_red.
     pv_has_missing = abap_true.
-    IF pv_missing IS NOT INITIAL.
-      CONCATENATE pv_missing '; ' INTO pv_missing.
+    IF gs_mara-pstat NS 'E'.
+      pv_missing = 'Satin alma gorunumu yok (PSTAT: E eksik)'.
+    ELSE.
+      pv_missing = 'Satin alma grubu bos'.
     ENDIF.
-    CONCATENATE pv_missing 'Satin alma grubu bos' INTO pv_missing.
-  ENDIF.
-
-  " Satin alma deger anahtari kontrolu (KORREME - satinalma kayit profili)
-  IF ps_marc-kordb IS INITIAL AND ps_marc-ekgrp IS NOT INITIAL.
-    ps_result-purch_view = icon_led_yellow.
-    pv_has_missing = abap_true.
-    IF pv_missing IS NOT INITIAL.
-      CONCATENATE pv_missing '; ' INTO pv_missing.
-    ENDIF.
-    CONCATENATE pv_missing 'Satinalma kayit profili bos' INTO pv_missing.
   ENDIF.
 
 ENDFORM.
@@ -618,44 +623,48 @@ FORM check_mrp_view USING    ps_marc TYPE marc
                              pv_missing TYPE string
                              pv_has_missing TYPE abap_bool.
 
-  IF ps_marc-dismm IS NOT INITIAL.
+  " Bakim durumu kontrolu: D = MRP gorunumu
+  READ TABLE gt_mara INTO gs_mara WITH KEY matnr = ps_marc-matnr.
+
+  IF ps_marc-dismm IS NOT INITIAL AND gs_mara-pstat CS 'D'.
     ps_result-mrp_view = icon_led_green.
 
-    " MRP tipi dolu ama diger alanlar eksik olabilir
-    IF ps_marc-dispo IS INITIAL.
-      ps_result-mrp_view = icon_led_yellow.
-      pv_has_missing = abap_true.
-      IF pv_missing IS NOT INITIAL.
-        CONCATENATE pv_missing '; ' INTO pv_missing.
-      ENDIF.
-      CONCATENATE pv_missing 'MRP denetcisi bos' INTO pv_missing.
-    ENDIF.
-
-    IF ps_marc-beskz IS INITIAL.
-      ps_result-mrp_view = icon_led_yellow.
-      pv_has_missing = abap_true.
-      IF pv_missing IS NOT INITIAL.
-        CONCATENATE pv_missing '; ' INTO pv_missing.
-      ENDIF.
-      CONCATENATE pv_missing 'Tedarik turu bos' INTO pv_missing.
-    ENDIF.
-
-    IF ps_marc-plifz IS INITIAL.
-      ps_result-mrp_view = icon_led_yellow.
-      pv_has_missing = abap_true.
-      IF pv_missing IS NOT INITIAL.
-        CONCATENATE pv_missing '; ' INTO pv_missing.
-      ENDIF.
-      CONCATENATE pv_missing 'Planlanan teslimat suresi bos' INTO pv_missing.
-    ENDIF.
+*    " MRP tipi dolu ama diger alanlar eksik olabilir (sari uyarilar devre disi)
+*    IF ps_marc-dispo IS INITIAL.
+*      ps_result-mrp_view = icon_led_yellow.
+*      pv_has_missing = abap_true.
+*      IF pv_missing IS NOT INITIAL.
+*        CONCATENATE pv_missing '; ' INTO pv_missing.
+*      ENDIF.
+*      CONCATENATE pv_missing 'MRP denetcisi bos' INTO pv_missing.
+*    ENDIF.
+*
+*    IF ps_marc-beskz IS INITIAL.
+*      ps_result-mrp_view = icon_led_yellow.
+*      pv_has_missing = abap_true.
+*      IF pv_missing IS NOT INITIAL.
+*        CONCATENATE pv_missing '; ' INTO pv_missing.
+*      ENDIF.
+*      CONCATENATE pv_missing 'Tedarik turu bos' INTO pv_missing.
+*    ENDIF.
+*
+*    IF ps_marc-plifz IS INITIAL.
+*      ps_result-mrp_view = icon_led_yellow.
+*      pv_has_missing = abap_true.
+*      IF pv_missing IS NOT INITIAL.
+*        CONCATENATE pv_missing '; ' INTO pv_missing.
+*      ENDIF.
+*      CONCATENATE pv_missing 'Planlanan teslimat suresi bos' INTO pv_missing.
+*    ENDIF.
 
   ELSE.
     ps_result-mrp_view = icon_led_red.
     pv_has_missing = abap_true.
-    IF pv_missing IS NOT INITIAL.
-      CONCATENATE pv_missing '; ' INTO pv_missing.
+    IF gs_mara-pstat NS 'D'.
+      pv_missing = 'MRP gorunumu yok (PSTAT: D eksik)'.
+    ELSE.
+      pv_missing = 'MRP gorunumu yok (MRP tipi bos)'.
     ENDIF.
-    CONCATENATE pv_missing 'MRP gorunumu yok (MRP tipi bos)' INTO pv_missing.
   ENDIF.
 
 ENDFORM.
@@ -671,37 +680,41 @@ FORM check_accounting_view USING    pv_matnr TYPE matnr
 
   DATA: ls_mbew TYPE mbew.
 
+  " Bakim durumu kontrolu: B = Muhasebe gorunumu
+  READ TABLE gt_mara INTO gs_mara WITH KEY matnr = pv_matnr.
+
   READ TABLE gt_mbew INTO ls_mbew WITH KEY matnr = pv_matnr
                                            bwkey = pv_werks.
-  IF sy-subrc = 0.
+  IF sy-subrc = 0 AND gs_mara-pstat CS 'B'.
     ps_result-acct_view = icon_led_green.
 
-    " Muhasebe gorunumunde eksik alan kontrolu
-    IF ls_mbew-vprsv IS INITIAL.
-      ps_result-acct_view = icon_led_yellow.
-      pv_has_missing = abap_true.
-      IF pv_missing IS NOT INITIAL.
-        CONCATENATE pv_missing '; ' INTO pv_missing.
-      ENDIF.
-      CONCATENATE pv_missing 'Fiyat kontrol gostergesi bos (Muhasebe)' INTO pv_missing.
-    ENDIF.
-
-    IF ls_mbew-bklas IS INITIAL.
-      ps_result-acct_view = icon_led_yellow.
-      pv_has_missing = abap_true.
-      IF pv_missing IS NOT INITIAL.
-        CONCATENATE pv_missing '; ' INTO pv_missing.
-      ENDIF.
-      CONCATENATE pv_missing 'Degerleme sinifi bos' INTO pv_missing.
-    ENDIF.
+*    " Muhasebe gorunumunde eksik alan kontrolu (sari uyarilar devre disi)
+*    IF ls_mbew-vprsv IS INITIAL.
+*      ps_result-acct_view = icon_led_yellow.
+*      pv_has_missing = abap_true.
+*      IF pv_missing IS NOT INITIAL.
+*        CONCATENATE pv_missing '; ' INTO pv_missing.
+*      ENDIF.
+*      CONCATENATE pv_missing 'Fiyat kontrol gostergesi bos (Muhasebe)' INTO pv_missing.
+*    ENDIF.
+*
+*    IF ls_mbew-bklas IS INITIAL.
+*      ps_result-acct_view = icon_led_yellow.
+*      pv_has_missing = abap_true.
+*      IF pv_missing IS NOT INITIAL.
+*        CONCATENATE pv_missing '; ' INTO pv_missing.
+*      ENDIF.
+*      CONCATENATE pv_missing 'Degerleme sinifi bos' INTO pv_missing.
+*    ENDIF.
 
   ELSE.
     ps_result-acct_view = icon_led_red.
     pv_has_missing = abap_true.
-    IF pv_missing IS NOT INITIAL.
-      CONCATENATE pv_missing '; ' INTO pv_missing.
+    IF gs_mara-pstat NS 'B'.
+      pv_missing = 'Muhasebe gorunumu yok (PSTAT: B eksik)'.
+    ELSE.
+      pv_missing = 'Muhasebe gorunumu yok (MBEW kaydi yok)'.
     ENDIF.
-    CONCATENATE pv_missing 'Muhasebe gorunumu yok' INTO pv_missing.
   ENDIF.
 
 ENDFORM.
@@ -714,26 +727,31 @@ FORM check_costing_view USING    ps_marc TYPE marc
                                  pv_missing TYPE string
                                  pv_has_missing TYPE abap_bool.
 
-  " Maliyetlendirme gorunumu MARC uzerinden kontrol
-  IF ps_marc-losgr IS NOT INITIAL OR ps_marc-prctr IS NOT INITIAL.
+  " Bakim durumu kontrolu: G = Maliyetlendirme gorunumu
+  READ TABLE gt_mara INTO gs_mara WITH KEY matnr = ps_marc-matnr.
+
+  IF gs_mara-pstat CS 'G' AND
+     ( ps_marc-losgr IS NOT INITIAL OR ps_marc-prctr IS NOT INITIAL ).
     ps_result-cost_view = icon_led_green.
 
-    IF ps_marc-prctr IS INITIAL.
-      ps_result-cost_view = icon_led_yellow.
-      pv_has_missing = abap_true.
-      IF pv_missing IS NOT INITIAL.
-        CONCATENATE pv_missing '; ' INTO pv_missing.
-      ENDIF.
-      CONCATENATE pv_missing 'Kar merkezi bos' INTO pv_missing.
-    ENDIF.
+*    " Maliyetlendirme eksik alan kontrolu (sari uyarilar devre disi)
+*    IF ps_marc-prctr IS INITIAL.
+*      ps_result-cost_view = icon_led_yellow.
+*      pv_has_missing = abap_true.
+*      IF pv_missing IS NOT INITIAL.
+*        CONCATENATE pv_missing '; ' INTO pv_missing.
+*      ENDIF.
+*      CONCATENATE pv_missing 'Kar merkezi bos' INTO pv_missing.
+*    ENDIF.
 
   ELSE.
     ps_result-cost_view = icon_led_red.
     pv_has_missing = abap_true.
-    IF pv_missing IS NOT INITIAL.
-      CONCATENATE pv_missing '; ' INTO pv_missing.
+    IF gs_mara-pstat NS 'G'.
+      pv_missing = 'Maliyetlendirme gorunumu yok (PSTAT: G eksik)'.
+    ELSE.
+      pv_missing = 'Maliyetlendirme gorunumu eksik'.
     ENDIF.
-    CONCATENATE pv_missing 'Maliyetlendirme gorunumu eksik' INTO pv_missing.
   ENDIF.
 
 ENDFORM.
@@ -749,17 +767,21 @@ FORM check_storage_view USING    pv_matnr TYPE matnr
 
   DATA: ls_mard TYPE mard.
 
+  " Bakim durumu kontrolu: L = Depolama gorunumu
+  READ TABLE gt_mara INTO gs_mara WITH KEY matnr = pv_matnr.
+
   READ TABLE gt_mard INTO ls_mard WITH KEY matnr = pv_matnr
                                            werks = pv_werks.
-  IF sy-subrc = 0.
+  IF sy-subrc = 0 AND gs_mara-pstat CS 'L'.
     ps_result-store_view = icon_led_green.
   ELSE.
     ps_result-store_view = icon_led_red.
     pv_has_missing = abap_true.
-    IF pv_missing IS NOT INITIAL.
-      CONCATENATE pv_missing '; ' INTO pv_missing.
+    IF gs_mara-pstat NS 'L'.
+      pv_missing = 'Depolama gorunumu yok (PSTAT: L eksik)'.
+    ELSE.
+      pv_missing = 'Depolama gorunumu yok (depo yeri tanimli degil)'.
     ENDIF.
-    CONCATENATE pv_missing 'Depolama gorunumu yok (depo yeri tanimli degil)' INTO pv_missing.
   ENDIF.
 
 ENDFORM.
@@ -775,17 +797,21 @@ FORM check_quality_view USING    pv_matnr TYPE matnr
 
   DATA: ls_qmat TYPE qmat.
 
+  " Bakim durumu kontrolu: Q = Kalite yonetimi gorunumu
+  READ TABLE gt_mara INTO gs_mara WITH KEY matnr = pv_matnr.
+
   READ TABLE gt_qmat INTO ls_qmat WITH KEY matnr = pv_matnr
                                            werks = pv_werks.
-  IF sy-subrc = 0.
+  IF sy-subrc = 0 AND gs_mara-pstat CS 'Q'.
     ps_result-qual_view = icon_led_green.
   ELSE.
     ps_result-qual_view = icon_led_red.
     pv_has_missing = abap_true.
-    IF pv_missing IS NOT INITIAL.
-      CONCATENATE pv_missing '; ' INTO pv_missing.
+    IF gs_mara-pstat NS 'Q'.
+      pv_missing = 'Kalite yonetimi gorunumu yok (PSTAT: Q eksik)'.
+    ELSE.
+      pv_missing = 'Kalite yonetimi gorunumu yok (QMAT kaydi yok)'.
     ENDIF.
-    CONCATENATE pv_missing 'Kalite yonetimi gorunumu yok' INTO pv_missing.
   ENDIF.
 
 ENDFORM.
