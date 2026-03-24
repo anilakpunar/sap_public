@@ -867,13 +867,25 @@ FORM get_view_creation_data.
         ls_view_create TYPE ty_view_create,
         lv_werks TYPE werks_d.
 
+  TYPES: BEGIN OF ty_objid,
+           objectid TYPE cdobjectv,
+         END OF ty_objid.
+  DATA: lt_objid TYPE TABLE OF ty_objid,
+        ls_objid TYPE ty_objid.
+
   CHECK gt_mara IS NOT INITIAL.
+
+  " Malzeme numaralarini CDOBJECTV tipine donustur
+  LOOP AT gt_mara INTO gs_mara.
+    ls_objid-objectid = gs_mara-matnr.
+    APPEND ls_objid TO lt_objid.
+  ENDLOOP.
 
   " Degisiklik belgesi basliklarini oku
   SELECT * FROM cdhdr INTO TABLE lt_cdhdr
-    FOR ALL ENTRIES IN gt_mara
+    FOR ALL ENTRIES IN lt_objid
     WHERE objectclas = 'MATERIAL'
-      AND objectid = gt_mara-matnr.
+      AND objectid = lt_objid-objectid.
 
   CHECK lt_cdhdr IS NOT INITIAL.
 
