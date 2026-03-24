@@ -192,159 +192,257 @@ ENDFORM.
 *&---------------------------------------------------------------------*
 FORM check_views.
 
-  DATA: lv_has_missing TYPE abap_bool.
+  DATA: lv_has_missing TYPE abap_bool,
+        lv_marc_found  TYPE abap_bool.
 
-  LOOP AT gt_marc INTO gs_marc.
+  LOOP AT gt_mara INTO gs_mara.
 
-    CLEAR: gs_result, gv_detail, lv_has_missing.
+    " Bu malzemeye ait tesis kayitlarini kontrol et
+    lv_marc_found = abap_false.
 
-    gs_result-matnr = gs_marc-matnr.
-    gs_result-werks = gs_marc-werks.
+    LOOP AT gt_marc INTO gs_marc WHERE matnr = gs_mara-matnr.
 
-    " Malzeme temel bilgilerini al
-    READ TABLE gt_mara INTO gs_mara WITH KEY matnr = gs_marc-matnr.
-    IF sy-subrc = 0.
+      lv_marc_found = abap_true.
+      CLEAR: gs_result, gv_detail, lv_has_missing.
+
+      " Temel bilgiler
+      gs_result-matnr = gs_mara-matnr.
       gs_result-mtart = gs_mara-mtart.
       gs_result-matkl = gs_mara-matkl.
       gs_result-ersda = gs_mara-ersda.
-    ENDIF.
+      gs_result-werks = gs_marc-werks.
 
-    " Malzeme tanimini al
-    READ TABLE gt_makt INTO gs_makt WITH KEY matnr = gs_marc-matnr.
-    IF sy-subrc = 0.
-      gs_result-maktx = gs_makt-maktx.
-    ENDIF.
+      " Malzeme tanimini al
+      READ TABLE gt_makt INTO gs_makt WITH KEY matnr = gs_mara-matnr.
+      IF sy-subrc = 0.
+        gs_result-maktx = gs_makt-maktx.
+      ENDIF.
 
-    " Depo yeri bilgisini al
-    READ TABLE gt_mard INTO gs_mard WITH KEY matnr = gs_marc-matnr
-                                              werks = gs_marc-werks.
-    IF sy-subrc = 0.
-      gs_result-lgort = gs_mard-lgort.
-    ENDIF.
+      " Depo yeri bilgisini al
+      READ TABLE gt_mard INTO gs_mard WITH KEY matnr = gs_marc-matnr
+                                                werks = gs_marc-werks.
+      IF sy-subrc = 0.
+        gs_result-lgort = gs_mard-lgort.
+      ENDIF.
 
-    "---------------------------------------------------------------
-    " 1. Temel Veri Gorunumu Kontrolu
-    "---------------------------------------------------------------
-    IF p_basic = 'X'.
-      CLEAR gv_detail.
-      PERFORM check_basic_view USING    gs_mara
-                               CHANGING gs_result
-                                        gv_detail
-                                        lv_has_missing.
-      gs_result-basic_detail = gv_detail.
-    ENDIF.
+      " Gorunum kontrollerini yap
+      PERFORM run_view_checks USING    gs_mara gs_marc
+                               CHANGING gs_result lv_has_missing.
 
-    "---------------------------------------------------------------
-    " 2. Satis Gorunumu Kontrolu
-    "---------------------------------------------------------------
-    IF p_sales = 'X'.
-      CLEAR gv_detail.
-      PERFORM check_sales_view USING    gs_marc-matnr
-                               CHANGING gs_result
-                                        gv_detail
-                                        lv_has_missing.
-      gs_result-sales_detail = gv_detail.
-    ENDIF.
-
-    "---------------------------------------------------------------
-    " 3. Satin Alma Gorunumu Kontrolu
-    "---------------------------------------------------------------
-    IF p_purch = 'X'.
-      CLEAR gv_detail.
-      PERFORM check_purchasing_view USING    gs_marc
-                                    CHANGING gs_result
-                                             gv_detail
-                                             lv_has_missing.
-      gs_result-purch_detail = gv_detail.
-    ENDIF.
-
-    "---------------------------------------------------------------
-    " 4. MRP Gorunumu Kontrolu
-    "---------------------------------------------------------------
-    IF p_mrp = 'X'.
-      CLEAR gv_detail.
-      PERFORM check_mrp_view USING    gs_marc
-                             CHANGING gs_result
-                                      gv_detail
-                                      lv_has_missing.
-      gs_result-mrp_detail = gv_detail.
-    ENDIF.
-
-    "---------------------------------------------------------------
-    " 5. Muhasebe Gorunumu Kontrolu
-    "---------------------------------------------------------------
-    IF p_acct = 'X'.
-      CLEAR gv_detail.
-      PERFORM check_accounting_view USING    gs_marc-matnr
-                                             gs_marc-werks
-                                    CHANGING gs_result
-                                             gv_detail
-                                             lv_has_missing.
-      gs_result-acct_detail = gv_detail.
-    ENDIF.
-
-    "---------------------------------------------------------------
-    " 6. Maliyetlendirme Gorunumu Kontrolu
-    "---------------------------------------------------------------
-    IF p_cost = 'X'.
-      CLEAR gv_detail.
-      PERFORM check_costing_view USING    gs_marc
-                                 CHANGING gs_result
-                                          gv_detail
-                                          lv_has_missing.
-      gs_result-cost_detail = gv_detail.
-    ENDIF.
-
-    "---------------------------------------------------------------
-    " 7. Depolama Gorunumu Kontrolu
-    "---------------------------------------------------------------
-    IF p_store = 'X'.
-      CLEAR gv_detail.
-      PERFORM check_storage_view USING    gs_marc-matnr
-                                          gs_marc-werks
-                                 CHANGING gs_result
-                                          gv_detail
-                                          lv_has_missing.
-      gs_result-store_detail = gv_detail.
-    ENDIF.
-
-    "---------------------------------------------------------------
-    " 8. Kalite Yonetimi Gorunumu Kontrolu
-    "---------------------------------------------------------------
-    IF p_qual = 'X'.
-      CLEAR gv_detail.
-      PERFORM check_quality_view USING    gs_marc-matnr
-                                          gs_marc-werks
-                                 CHANGING gs_result
-                                          gv_detail
-                                          lv_has_missing.
-      gs_result-qual_detail = gv_detail.
-    ENDIF.
-
-    " Genel durumu belirle
-    IF lv_has_missing = abap_true.
-      gs_result-status = icon_led_red.
-      gs_result-status_text = 'Eksik Gorunum/Veri Mevcut'.
-    ELSE.
-      gs_result-status = icon_led_green.
-      gs_result-status_text = 'Tum Gorunumler Tamam'.
-    ENDIF.
-
-    " Filtreleme: Sadece eksik olanlari goster
-    IF p_miss = 'X'.
+      " Genel durumu belirle
       IF lv_has_missing = abap_true.
+        gs_result-status = icon_led_red.
+        gs_result-status_text = 'Eksik Gorunum/Veri Mevcut'.
+      ELSE.
+        gs_result-status = icon_led_green.
+        gs_result-status_text = 'Tum Gorunumler Tamam'.
+      ENDIF.
+
+      " Filtreleme: Sadece eksik olanlari goster
+      IF p_miss = 'X'.
+        IF lv_has_missing = abap_true.
+          APPEND gs_result TO gt_result.
+        ENDIF.
+      ELSE.
         APPEND gs_result TO gt_result.
       ENDIF.
-    ELSE.
-      APPEND gs_result TO gt_result.
-    ENDIF.
 
-  ENDLOOP.
+    ENDLOOP. " gt_marc
+
+    " Tesis kaydi yoksa malzemeyi yine de goster
+    IF lv_marc_found = abap_false.
+
+      CLEAR: gs_result, gv_detail, lv_has_missing.
+
+      gs_result-matnr = gs_mara-matnr.
+      gs_result-mtart = gs_mara-mtart.
+      gs_result-matkl = gs_mara-matkl.
+      gs_result-ersda = gs_mara-ersda.
+
+      " Malzeme tanimini al
+      READ TABLE gt_makt INTO gs_makt WITH KEY matnr = gs_mara-matnr.
+      IF sy-subrc = 0.
+        gs_result-maktx = gs_makt-maktx.
+      ENDIF.
+
+      " Temel veri kontrolu
+      IF p_basic = 'X'.
+        CLEAR gv_detail.
+        PERFORM check_basic_view USING    gs_mara
+                                 CHANGING gs_result
+                                          gv_detail
+                                          lv_has_missing.
+        gs_result-basic_detail = gv_detail.
+      ENDIF.
+
+      " Tesis kaydi olmayan gorunumler icin eksik isaretle
+      IF p_sales = 'X'.
+        gs_result-sales_view = icon_led_red.
+        gs_result-sales_detail = 'Tesis kaydi yok'.
+        lv_has_missing = abap_true.
+      ENDIF.
+      IF p_purch = 'X'.
+        gs_result-purch_view = icon_led_red.
+        gs_result-purch_detail = 'Tesis kaydi yok'.
+        lv_has_missing = abap_true.
+      ENDIF.
+      IF p_mrp = 'X'.
+        gs_result-mrp_view = icon_led_red.
+        gs_result-mrp_detail = 'Tesis kaydi yok'.
+        lv_has_missing = abap_true.
+      ENDIF.
+      IF p_acct = 'X'.
+        gs_result-acct_view = icon_led_red.
+        gs_result-acct_detail = 'Tesis kaydi yok'.
+        lv_has_missing = abap_true.
+      ENDIF.
+      IF p_cost = 'X'.
+        gs_result-cost_view = icon_led_red.
+        gs_result-cost_detail = 'Tesis kaydi yok'.
+        lv_has_missing = abap_true.
+      ENDIF.
+      IF p_store = 'X'.
+        gs_result-store_view = icon_led_red.
+        gs_result-store_detail = 'Tesis kaydi yok'.
+        lv_has_missing = abap_true.
+      ENDIF.
+      IF p_qual = 'X'.
+        gs_result-qual_view = icon_led_red.
+        gs_result-qual_detail = 'Tesis kaydi yok'.
+        lv_has_missing = abap_true.
+      ENDIF.
+
+      " Genel durumu belirle
+      gs_result-status = icon_led_red.
+      gs_result-status_text = 'Tesis Kaydi Yok'.
+
+      IF p_miss = 'X'.
+        IF lv_has_missing = abap_true.
+          APPEND gs_result TO gt_result.
+        ENDIF.
+      ELSE.
+        APPEND gs_result TO gt_result.
+      ENDIF.
+
+    ENDIF. " lv_marc_found
+
+  ENDLOOP. " gt_mara
 
   IF gt_result IS INITIAL.
     MESSAGE s001(00) WITH 'Gosterilecek veri bulunamadi.'
       DISPLAY LIKE 'W'.
     LEAVE LIST-PROCESSING.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form RUN_VIEW_CHECKS
+*&---------------------------------------------------------------------*
+*& Tesis kaydi olan malzemeler icin tum gorunum kontrollerini calistirir
+*&---------------------------------------------------------------------*
+FORM run_view_checks USING    ps_mara TYPE mara
+                              ps_marc TYPE marc
+                     CHANGING ps_result TYPE ty_result
+                              pv_has_missing TYPE abap_bool.
+
+  "---------------------------------------------------------------
+  " 1. Temel Veri Gorunumu Kontrolu
+  "---------------------------------------------------------------
+  IF p_basic = 'X'.
+    CLEAR gv_detail.
+    PERFORM check_basic_view USING    ps_mara
+                             CHANGING ps_result
+                                      gv_detail
+                                      pv_has_missing.
+    ps_result-basic_detail = gv_detail.
+  ENDIF.
+
+  "---------------------------------------------------------------
+  " 2. Satis Gorunumu Kontrolu
+  "---------------------------------------------------------------
+  IF p_sales = 'X'.
+    CLEAR gv_detail.
+    PERFORM check_sales_view USING    ps_marc-matnr
+                             CHANGING ps_result
+                                      gv_detail
+                                      pv_has_missing.
+    ps_result-sales_detail = gv_detail.
+  ENDIF.
+
+  "---------------------------------------------------------------
+  " 3. Satin Alma Gorunumu Kontrolu
+  "---------------------------------------------------------------
+  IF p_purch = 'X'.
+    CLEAR gv_detail.
+    PERFORM check_purchasing_view USING    ps_marc
+                                  CHANGING ps_result
+                                           gv_detail
+                                           pv_has_missing.
+    ps_result-purch_detail = gv_detail.
+  ENDIF.
+
+  "---------------------------------------------------------------
+  " 4. MRP Gorunumu Kontrolu
+  "---------------------------------------------------------------
+  IF p_mrp = 'X'.
+    CLEAR gv_detail.
+    PERFORM check_mrp_view USING    ps_marc
+                           CHANGING ps_result
+                                    gv_detail
+                                    pv_has_missing.
+    ps_result-mrp_detail = gv_detail.
+  ENDIF.
+
+  "---------------------------------------------------------------
+  " 5. Muhasebe Gorunumu Kontrolu
+  "---------------------------------------------------------------
+  IF p_acct = 'X'.
+    CLEAR gv_detail.
+    PERFORM check_accounting_view USING    ps_marc-matnr
+                                           ps_marc-werks
+                                  CHANGING ps_result
+                                           gv_detail
+                                           pv_has_missing.
+    ps_result-acct_detail = gv_detail.
+  ENDIF.
+
+  "---------------------------------------------------------------
+  " 6. Maliyetlendirme Gorunumu Kontrolu
+  "---------------------------------------------------------------
+  IF p_cost = 'X'.
+    CLEAR gv_detail.
+    PERFORM check_costing_view USING    ps_marc
+                               CHANGING ps_result
+                                        gv_detail
+                                        pv_has_missing.
+    ps_result-cost_detail = gv_detail.
+  ENDIF.
+
+  "---------------------------------------------------------------
+  " 7. Depolama Gorunumu Kontrolu
+  "---------------------------------------------------------------
+  IF p_store = 'X'.
+    CLEAR gv_detail.
+    PERFORM check_storage_view USING    ps_marc-matnr
+                                        ps_marc-werks
+                               CHANGING ps_result
+                                        gv_detail
+                                        pv_has_missing.
+    ps_result-store_detail = gv_detail.
+  ENDIF.
+
+  "---------------------------------------------------------------
+  " 8. Kalite Yonetimi Gorunumu Kontrolu
+  "---------------------------------------------------------------
+  IF p_qual = 'X'.
+    CLEAR gv_detail.
+    PERFORM check_quality_view USING    ps_marc-matnr
+                                        ps_marc-werks
+                               CHANGING ps_result
+                                        gv_detail
+                                        pv_has_missing.
+    ps_result-qual_detail = gv_detail.
   ENDIF.
 
 ENDFORM.
