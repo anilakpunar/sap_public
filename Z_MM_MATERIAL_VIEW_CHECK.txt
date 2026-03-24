@@ -96,7 +96,7 @@ TYPES: BEGIN OF ty_view_create,
          werks   TYPE werks_d,
          tabname TYPE tabname,
          erdat   TYPE sy-datum,
-         ernam   TYPE syuname,
+         ernam   TYPE sy-uname,
        END OF ty_view_create.
 
 DATA: gt_view_create TYPE TABLE OF ty_view_create,
