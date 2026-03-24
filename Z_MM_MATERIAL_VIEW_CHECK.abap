@@ -15,7 +15,9 @@ TYPES: BEGIN OF ty_result,
          maktx        TYPE maktx,          " Malzeme tanimi
          mtart        TYPE mtart,          " Malzeme turu
          matkl        TYPE matkl,          " Mal grubu
+         ernam        TYPE ernam,          " Yaratan kullanici
          ersda        TYPE ersda,          " Yaratma tarihi
+         bukrs        TYPE bukrs,          " Sirket kodu
          werks        TYPE werks_d,        " Tesis
          lgort        TYPE lgort_d,        " Depo yeri
          " Gorunum durumu ve detaylari
@@ -59,7 +61,9 @@ DATA: gt_result  TYPE TABLE OF ty_result,
       gt_mbew    TYPE TABLE OF mbew,
       gs_mbew    TYPE mbew,
       gt_qmat    TYPE TABLE OF qmat,
-      gs_qmat    TYPE qmat.
+      gs_qmat    TYPE qmat,
+      gt_t001k   TYPE TABLE OF t001k,
+      gs_t001k   TYPE t001k.
 
 * ALV degiskenleri
 DATA: go_alv       TYPE REF TO cl_salv_table,
@@ -81,6 +85,7 @@ SELECTION-SCREEN BEGIN OF BLOCK b01 WITH FRAME TITLE TEXT-b01.
                   s_mtart FOR gs_mara-mtart,           " Malzeme turu
                   s_matkl FOR gs_mara-matkl,           " Mal grubu
                   s_ersda FOR gs_mara-ersda,           " Yaratma tarihi
+                  s_bukrs FOR gs_t001k-bukrs,          " Sirket kodu
                   s_werks FOR gs_marc-werks.            " Tesis
 SELECTION-SCREEN END OF BLOCK b01.
 
@@ -143,12 +148,35 @@ FORM get_data.
     WHERE matnr = gt_mara-matnr
       AND spras = sy-langu.
 
+  " Tesis - Sirket kodu eslesme tablosu (T001K)
+  SELECT * FROM t001k
+    INTO TABLE gt_t001k
+    WHERE bukrs IN s_bukrs.
+
   " Tesis verileri (MARC)
-  SELECT * FROM marc
-    INTO TABLE gt_marc
-    FOR ALL ENTRIES IN gt_mara
-    WHERE matnr = gt_mara-matnr
-      AND werks IN s_werks.
+  IF gt_t001k IS NOT INITIAL AND s_bukrs IS NOT INITIAL.
+    " Sirket kodu filtresi varsa sadece o sirketin tesislerini al
+    SELECT * FROM marc
+      INTO TABLE gt_marc
+      FOR ALL ENTRIES IN gt_mara
+      WHERE matnr = gt_mara-matnr
+        AND werks IN s_werks.
+    " Sirket koduna ait olmayan tesisleri cikar
+    DATA: lt_marc_temp TYPE TABLE OF marc.
+    LOOP AT gt_marc INTO gs_marc.
+      READ TABLE gt_t001k INTO gs_t001k WITH KEY bwkey = gs_marc-werks.
+      IF sy-subrc = 0.
+        APPEND gs_marc TO lt_marc_temp.
+      ENDIF.
+    ENDLOOP.
+    gt_marc = lt_marc_temp.
+  ELSE.
+    SELECT * FROM marc
+      INTO TABLE gt_marc
+      FOR ALL ENTRIES IN gt_mara
+      WHERE matnr = gt_mara-matnr
+        AND werks IN s_werks.
+  ENDIF.
 
   " Depo yeri verileri (MARD)
   IF gt_marc IS NOT INITIAL.
@@ -209,8 +237,15 @@ FORM check_views.
       gs_result-matnr = gs_mara-matnr.
       gs_result-mtart = gs_mara-mtart.
       gs_result-matkl = gs_mara-matkl.
+      gs_result-ernam = gs_mara-ernam.
       gs_result-ersda = gs_mara-ersda.
       gs_result-werks = gs_marc-werks.
+
+      " Sirket kodunu tesis uzerinden belirle
+      READ TABLE gt_t001k INTO gs_t001k WITH KEY bwkey = gs_marc-werks.
+      IF sy-subrc = 0.
+        gs_result-bukrs = gs_t001k-bukrs.
+      ENDIF.
 
       " Malzeme tanimini al
       READ TABLE gt_makt INTO gs_makt WITH KEY matnr = gs_mara-matnr.
@@ -257,6 +292,7 @@ FORM check_views.
       gs_result-matnr = gs_mara-matnr.
       gs_result-mtart = gs_mara-mtart.
       gs_result-matkl = gs_mara-matkl.
+      gs_result-ernam = gs_mara-ernam.
       gs_result-ersda = gs_mara-ersda.
 
       " Malzeme tanimini al
@@ -826,11 +862,23 @@ FORM display_alv.
           go_column->set_medium_text( 'Mal Grubu' ).
           go_column->set_long_text( 'Mal Grubu' ).
 
+          " Yaratan
+          go_column = go_columns->get_column( 'ERNAM' ).
+          go_column->set_short_text( 'Yaratan' ).
+          go_column->set_medium_text( 'Yaratan' ).
+          go_column->set_long_text( 'Malzemeyi Yaratan Kullanici' ).
+
           " Yaratma Tarihi
           go_column = go_columns->get_column( 'ERSDA' ).
           go_column->set_short_text( 'Yrt.Tar' ).
           go_column->set_medium_text( 'Yaratma Tarihi' ).
           go_column->set_long_text( 'Malzeme Yaratma Tarihi' ).
+
+          " Sirket Kodu
+          go_column = go_columns->get_column( 'BUKRS' ).
+          go_column->set_short_text( 'SirKodu' ).
+          go_column->set_medium_text( 'Sirket Kodu' ).
+          go_column->set_long_text( 'Sirket Kodu' ).
 
           " Tesis
           go_column = go_columns->get_column( 'WERKS' ).
