@@ -18,18 +18,25 @@ TYPES: BEGIN OF ty_result,
          ersda        TYPE ersda,          " Yaratma tarihi
          werks        TYPE werks_d,        " Tesis
          lgort        TYPE lgort_d,        " Depo yeri
-         " Gorunum durumu
+         " Gorunum durumu ve detaylari
          basic_view   TYPE icon_d,         " Temel veri gorunumu
+         basic_detail TYPE string,         " Temel veri eksik detay
          class_view   TYPE icon_d,         " Siniflandirma gorunumu
          sales_view   TYPE icon_d,         " Satis gorunumu
+         sales_detail TYPE string,         " Satis eksik detay
          purch_view   TYPE icon_d,         " Satin alma gorunumu
+         purch_detail TYPE string,         " Satin alma eksik detay
          mrp_view     TYPE icon_d,         " MRP gorunumu
+         mrp_detail   TYPE string,         " MRP eksik detay
          acct_view    TYPE icon_d,         " Muhasebe gorunumu
+         acct_detail  TYPE string,         " Muhasebe eksik detay
          cost_view    TYPE icon_d,         " Maliyetlendirme gorunumu
+         cost_detail  TYPE string,         " Maliyetlendirme eksik detay
          store_view   TYPE icon_d,         " Depolama gorunumu
+         store_detail TYPE string,         " Depolama eksik detay
          qual_view    TYPE icon_d,         " Kalite yonetimi gorunumu
-         " Eksik veri kontrolleri
-         missing_info TYPE string,         " Eksik bilgi aciklamasi
+         qual_detail  TYPE string,         " Kalite eksik detay
+         " Genel durum
          status       TYPE icon_d,         " Genel durum ikonu
          status_text  TYPE char40,         " Durum aciklamasi
        END OF ty_result.
@@ -64,7 +71,7 @@ DATA: go_alv       TYPE REF TO cl_salv_table,
       go_layout    TYPE REF TO cl_salv_layout,
       ls_layout    TYPE salv_s_layout_key.
 
-DATA: gv_missing TYPE string.
+DATA: gv_detail TYPE string.
 
 *----------------------------------------------------------------------*
 * Secim Ekrani
@@ -189,7 +196,7 @@ FORM check_views.
 
   LOOP AT gt_marc INTO gs_marc.
 
-    CLEAR: gs_result, gv_missing, lv_has_missing.
+    CLEAR: gs_result, gv_detail, lv_has_missing.
 
     gs_result-matnr = gs_marc-matnr.
     gs_result-werks = gs_marc-werks.
@@ -219,87 +226,100 @@ FORM check_views.
     " 1. Temel Veri Gorunumu Kontrolu
     "---------------------------------------------------------------
     IF p_basic = 'X'.
+      CLEAR gv_detail.
       PERFORM check_basic_view USING    gs_mara
                                CHANGING gs_result
-                                        gv_missing
+                                        gv_detail
                                         lv_has_missing.
+      gs_result-basic_detail = gv_detail.
     ENDIF.
 
     "---------------------------------------------------------------
     " 2. Satis Gorunumu Kontrolu
     "---------------------------------------------------------------
     IF p_sales = 'X'.
+      CLEAR gv_detail.
       PERFORM check_sales_view USING    gs_marc-matnr
                                CHANGING gs_result
-                                        gv_missing
+                                        gv_detail
                                         lv_has_missing.
+      gs_result-sales_detail = gv_detail.
     ENDIF.
 
     "---------------------------------------------------------------
     " 3. Satin Alma Gorunumu Kontrolu
     "---------------------------------------------------------------
     IF p_purch = 'X'.
+      CLEAR gv_detail.
       PERFORM check_purchasing_view USING    gs_marc
                                     CHANGING gs_result
-                                             gv_missing
+                                             gv_detail
                                              lv_has_missing.
+      gs_result-purch_detail = gv_detail.
     ENDIF.
 
     "---------------------------------------------------------------
     " 4. MRP Gorunumu Kontrolu
     "---------------------------------------------------------------
     IF p_mrp = 'X'.
+      CLEAR gv_detail.
       PERFORM check_mrp_view USING    gs_marc
                              CHANGING gs_result
-                                      gv_missing
+                                      gv_detail
                                       lv_has_missing.
+      gs_result-mrp_detail = gv_detail.
     ENDIF.
 
     "---------------------------------------------------------------
     " 5. Muhasebe Gorunumu Kontrolu
     "---------------------------------------------------------------
     IF p_acct = 'X'.
+      CLEAR gv_detail.
       PERFORM check_accounting_view USING    gs_marc-matnr
                                              gs_marc-werks
                                     CHANGING gs_result
-                                             gv_missing
+                                             gv_detail
                                              lv_has_missing.
+      gs_result-acct_detail = gv_detail.
     ENDIF.
 
     "---------------------------------------------------------------
     " 6. Maliyetlendirme Gorunumu Kontrolu
     "---------------------------------------------------------------
     IF p_cost = 'X'.
+      CLEAR gv_detail.
       PERFORM check_costing_view USING    gs_marc
                                  CHANGING gs_result
-                                          gv_missing
+                                          gv_detail
                                           lv_has_missing.
+      gs_result-cost_detail = gv_detail.
     ENDIF.
 
     "---------------------------------------------------------------
     " 7. Depolama Gorunumu Kontrolu
     "---------------------------------------------------------------
     IF p_store = 'X'.
+      CLEAR gv_detail.
       PERFORM check_storage_view USING    gs_marc-matnr
                                           gs_marc-werks
                                  CHANGING gs_result
-                                          gv_missing
+                                          gv_detail
                                           lv_has_missing.
+      gs_result-store_detail = gv_detail.
     ENDIF.
 
     "---------------------------------------------------------------
     " 8. Kalite Yonetimi Gorunumu Kontrolu
     "---------------------------------------------------------------
     IF p_qual = 'X'.
+      CLEAR gv_detail.
       PERFORM check_quality_view USING    gs_marc-matnr
                                           gs_marc-werks
                                  CHANGING gs_result
-                                          gv_missing
+                                          gv_detail
                                           lv_has_missing.
+      gs_result-qual_detail = gv_detail.
     ENDIF.
-
-    " Eksik bilgi aciklamasini ata
-    gs_result-missing_info = gv_missing.
 
     " Genel durumu belirle
     IF lv_has_missing = abap_true.
@@ -726,52 +746,86 @@ FORM display_alv.
           go_column->set_medium_text( 'Depo Yeri' ).
           go_column->set_long_text( 'Depo Yeri' ).
 
-          " Gorunum kolonlari
+          " Gorunum kolonlari - ikon + detay yan yana
           go_column = go_columns->get_column( 'BASIC_VIEW' ).
           go_column->set_short_text( 'Temel' ).
           go_column->set_medium_text( 'Temel Veri' ).
           go_column->set_long_text( 'Temel Veri Gorunumu' ).
+
+          go_column = go_columns->get_column( 'BASIC_DETAIL' ).
+          go_column->set_short_text( 'TemelDet' ).
+          go_column->set_medium_text( 'Temel Detay' ).
+          go_column->set_long_text( 'Temel Veri Eksik Detay' ).
 
           go_column = go_columns->get_column( 'SALES_VIEW' ).
           go_column->set_short_text( 'Satis' ).
           go_column->set_medium_text( 'Satis Gor.' ).
           go_column->set_long_text( 'Satis Gorunumu' ).
 
+          go_column = go_columns->get_column( 'SALES_DETAIL' ).
+          go_column->set_short_text( 'SatisDet' ).
+          go_column->set_medium_text( 'Satis Detay' ).
+          go_column->set_long_text( 'Satis Eksik Detay' ).
+
           go_column = go_columns->get_column( 'PURCH_VIEW' ).
           go_column->set_short_text( 'SatAlma' ).
           go_column->set_medium_text( 'Satin Alma' ).
           go_column->set_long_text( 'Satin Alma Gorunumu' ).
+
+          go_column = go_columns->get_column( 'PURCH_DETAIL' ).
+          go_column->set_short_text( 'SAlmDet' ).
+          go_column->set_medium_text( 'SatAlma Detay' ).
+          go_column->set_long_text( 'Satin Alma Eksik Detay' ).
 
           go_column = go_columns->get_column( 'MRP_VIEW' ).
           go_column->set_short_text( 'MRP' ).
           go_column->set_medium_text( 'MRP Gor.' ).
           go_column->set_long_text( 'MRP Gorunumu' ).
 
+          go_column = go_columns->get_column( 'MRP_DETAIL' ).
+          go_column->set_short_text( 'MRPDet' ).
+          go_column->set_medium_text( 'MRP Detay' ).
+          go_column->set_long_text( 'MRP Eksik Detay' ).
+
           go_column = go_columns->get_column( 'ACCT_VIEW' ).
           go_column->set_short_text( 'Muhasebe' ).
           go_column->set_medium_text( 'Muhasebe Gor.' ).
           go_column->set_long_text( 'Muhasebe Gorunumu' ).
+
+          go_column = go_columns->get_column( 'ACCT_DETAIL' ).
+          go_column->set_short_text( 'MuhDet' ).
+          go_column->set_medium_text( 'Muhasebe Detay' ).
+          go_column->set_long_text( 'Muhasebe Eksik Detay' ).
 
           go_column = go_columns->get_column( 'COST_VIEW' ).
           go_column->set_short_text( 'Maliyet' ).
           go_column->set_medium_text( 'Maliyetlendirme' ).
           go_column->set_long_text( 'Maliyetlendirme Gorunumu' ).
 
+          go_column = go_columns->get_column( 'COST_DETAIL' ).
+          go_column->set_short_text( 'MalDet' ).
+          go_column->set_medium_text( 'Maliyet Detay' ).
+          go_column->set_long_text( 'Maliyetlendirme Eksik Detay' ).
+
           go_column = go_columns->get_column( 'STORE_VIEW' ).
           go_column->set_short_text( 'Depolama' ).
           go_column->set_medium_text( 'Depolama Gor.' ).
           go_column->set_long_text( 'Depolama Gorunumu' ).
+
+          go_column = go_columns->get_column( 'STORE_DETAIL' ).
+          go_column->set_short_text( 'DepoDet' ).
+          go_column->set_medium_text( 'Depolama Detay' ).
+          go_column->set_long_text( 'Depolama Eksik Detay' ).
 
           go_column = go_columns->get_column( 'QUAL_VIEW' ).
           go_column->set_short_text( 'Kalite' ).
           go_column->set_medium_text( 'Kalite Yon.' ).
           go_column->set_long_text( 'Kalite Yonetimi Gorunumu' ).
 
-          " Eksik Bilgi
-          go_column = go_columns->get_column( 'MISSING_INFO' ).
-          go_column->set_short_text( 'Eksikler' ).
-          go_column->set_medium_text( 'Eksik Bilgiler' ).
-          go_column->set_long_text( 'Eksik Bilgi Detaylari' ).
+          go_column = go_columns->get_column( 'QUAL_DETAIL' ).
+          go_column->set_short_text( 'KalDet' ).
+          go_column->set_medium_text( 'Kalite Detay' ).
+          go_column->set_long_text( 'Kalite Yonetimi Eksik Detay' ).
 
           " Durum
           go_column = go_columns->get_column( 'STATUS' ).
