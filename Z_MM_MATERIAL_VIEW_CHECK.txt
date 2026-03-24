@@ -440,14 +440,14 @@ FORM check_purchasing_view USING    ps_marc TYPE marc
     CONCATENATE pv_missing 'Satin alma grubu bos' INTO pv_missing.
   ENDIF.
 
-  " Satin alma deger anahtari kontrolu
-  IF ps_marc-vprsv IS INITIAL AND ps_marc-ekgrp IS NOT INITIAL.
+  " Satin alma deger anahtari kontrolu (KORREME - satinalma kayit profili)
+  IF ps_marc-kordb IS INITIAL AND ps_marc-ekgrp IS NOT INITIAL.
     ps_result-purch_view = icon_led_yellow.
     pv_has_missing = abap_true.
     IF pv_missing IS NOT INITIAL.
       CONCATENATE pv_missing '; ' INTO pv_missing.
     ENDIF.
-    CONCATENATE pv_missing 'Fiyat kontrol gostergesi bos' INTO pv_missing.
+    CONCATENATE pv_missing 'Satinalma kayit profili bos' INTO pv_missing.
   ENDIF.
 
 ENDFORM.
