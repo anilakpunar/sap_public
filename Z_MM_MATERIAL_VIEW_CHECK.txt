@@ -38,9 +38,6 @@ TYPES: BEGIN OF ty_result,
          store_detail TYPE string,         " Depolama eksik detay
          qual_view    TYPE icon_d,         " Kalite yonetimi gorunumu
          qual_detail  TYPE string,         " Kalite eksik detay
-         " Genel durum
-         status       TYPE icon_d,         " Genel durum ikonu
-         status_text  TYPE char40,         " Durum aciklamasi
        END OF ty_result.
 
 *----------------------------------------------------------------------*
@@ -264,15 +261,6 @@ FORM check_views.
       PERFORM run_view_checks USING    gs_mara gs_marc
                                CHANGING gs_result lv_has_missing.
 
-      " Genel durumu belirle
-      IF lv_has_missing = abap_true.
-        gs_result-status = icon_led_red.
-        gs_result-status_text = 'Eksik Gorunum/Veri Mevcut'.
-      ELSE.
-        gs_result-status = icon_led_green.
-        gs_result-status_text = 'Tum Gorunumler Tamam'.
-      ENDIF.
-
       " Filtreleme: Sadece eksik olanlari goster
       IF p_miss = 'X'.
         IF lv_has_missing = abap_true.
@@ -349,9 +337,6 @@ FORM check_views.
       ENDIF.
 
       " Genel durumu belirle
-      gs_result-status = icon_led_red.
-      gs_result-status_text = 'Uretim Yeri Kaydi Yok'.
-
       IF p_miss = 'X'.
         IF lv_has_missing = abap_true.
           APPEND gs_result TO gt_result.
@@ -998,18 +983,6 @@ FORM display_alv.
           go_column->set_short_text( 'KalDet' ).
           go_column->set_medium_text( 'Kalite Detay' ).
           go_column->set_long_text( 'Kalite Yonetimi Eksik Detay' ).
-
-          " Durum
-          go_column = go_columns->get_column( 'STATUS' ).
-          go_column->set_short_text( 'Durum' ).
-          go_column->set_medium_text( 'Genel Durum' ).
-          go_column->set_long_text( 'Genel Durum' ).
-
-          " Durum Aciklamasi
-          go_column = go_columns->get_column( 'STATUS_TEXT' ).
-          go_column->set_short_text( 'DurumAck' ).
-          go_column->set_medium_text( 'Durum Aciklama' ).
-          go_column->set_long_text( 'Durum Aciklamasi' ).
 
           " Siniflandirma gorunumunu gizle (ayri kontrol yok)
           go_column = go_columns->get_column( 'CLASS_VIEW' ).
