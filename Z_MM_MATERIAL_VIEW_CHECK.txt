@@ -14,7 +14,7 @@ TYPES: BEGIN OF ty_result,
          matnr        TYPE matnr,          " Malzeme numarasi
          maktx        TYPE maktx,          " Malzeme tanimi
          mtart        TYPE mtart,          " Malzeme turu
-         mbrsh        TYPE mbrsh,          " Sanayi kolu
+         ersda        TYPE ersda,          " Yaratma tarihi
          werks        TYPE werks_d,        " Tesis
          lgort        TYPE lgort_d,        " Depo yeri
          " Gorunum durumu
@@ -71,7 +71,7 @@ DATA: gv_missing TYPE string.
 SELECTION-SCREEN BEGIN OF BLOCK b01 WITH FRAME TITLE TEXT-b01.
   SELECT-OPTIONS: s_matnr FOR gs_mara-matnr,          " Malzeme no
                   s_mtart FOR gs_mara-mtart,           " Malzeme turu
-                  s_mbrsh FOR gs_mara-mbrsh,           " Sanayi kolu
+                  s_ersda FOR gs_mara-ersda,           " Yaratma tarihi
                   s_werks FOR gs_marc-werks.            " Tesis
 SELECTION-SCREEN END OF BLOCK b01.
 
@@ -118,7 +118,7 @@ FORM get_data.
     INTO TABLE gt_mara
     WHERE matnr IN s_matnr
       AND mtart IN s_mtart
-      AND mbrsh IN s_mbrsh.
+      AND ersda IN s_ersda.
 
   IF gt_mara IS INITIAL.
     MESSAGE s001(00) WITH 'Secim kriterlerine uygun malzeme bulunamadi.'
@@ -195,7 +195,7 @@ FORM check_views.
     READ TABLE gt_mara INTO gs_mara WITH KEY matnr = gs_marc-matnr.
     IF sy-subrc = 0.
       gs_result-mtart = gs_mara-mtart.
-      gs_result-mbrsh = gs_mara-mbrsh.
+      gs_result-ersda = gs_mara-ersda.
     ENDIF.
 
     " Malzeme tanimini al
@@ -698,11 +698,11 @@ FORM display_alv.
           go_column->set_medium_text( 'Malzeme Turu' ).
           go_column->set_long_text( 'Malzeme Turu' ).
 
-          " Sanayi Kolu
-          go_column = go_columns->get_column( 'MBRSH' ).
-          go_column->set_short_text( 'San.Kolu' ).
-          go_column->set_medium_text( 'Sanayi Kolu' ).
-          go_column->set_long_text( 'Sanayi Kolu' ).
+          " Yaratma Tarihi
+          go_column = go_columns->get_column( 'ERSDA' ).
+          go_column->set_short_text( 'Yrt.Tar' ).
+          go_column->set_medium_text( 'Yaratma Tarihi' ).
+          go_column->set_long_text( 'Malzeme Yaratma Tarihi' ).
 
           " Tesis
           go_column = go_columns->get_column( 'WERKS' ).
