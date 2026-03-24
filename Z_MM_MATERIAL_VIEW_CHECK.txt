@@ -23,21 +23,37 @@ TYPES: BEGIN OF ty_result,
          " Gorunum durumu ve detaylari
          basic_view   TYPE icon_d,         " Temel veri gorunumu
          basic_detail TYPE string,         " Temel veri eksik detay
+         basic_erdat  TYPE ersda,          " Temel veri yaratilma tarihi
+         basic_ernam  TYPE ernam,          " Temel veri yaratan
          class_view   TYPE icon_d,         " Siniflandirma gorunumu
          sales_view   TYPE icon_d,         " Satis gorunumu
          sales_detail TYPE string,         " Satis eksik detay
+         sales_erdat  TYPE ersda,          " Satis yaratilma tarihi
+         sales_ernam  TYPE ernam,          " Satis yaratan
          purch_view   TYPE icon_d,         " Satin alma gorunumu
          purch_detail TYPE string,         " Satin alma eksik detay
+         purch_erdat  TYPE ersda,          " Satin alma yaratilma tarihi
+         purch_ernam  TYPE ernam,          " Satin alma yaratan
          mrp_view     TYPE icon_d,         " MRP gorunumu
          mrp_detail   TYPE string,         " MRP eksik detay
+         mrp_erdat    TYPE ersda,          " MRP yaratilma tarihi
+         mrp_ernam    TYPE ernam,          " MRP yaratan
          acct_view    TYPE icon_d,         " Muhasebe gorunumu
          acct_detail  TYPE string,         " Muhasebe eksik detay
+         acct_erdat   TYPE ersda,          " Muhasebe yaratilma tarihi
+         acct_ernam   TYPE ernam,          " Muhasebe yaratan
          cost_view    TYPE icon_d,         " Maliyetlendirme gorunumu
          cost_detail  TYPE string,         " Maliyetlendirme eksik detay
+         cost_erdat   TYPE ersda,          " Maliyetlendirme yaratilma tarihi
+         cost_ernam   TYPE ernam,          " Maliyetlendirme yaratan
          store_view   TYPE icon_d,         " Depolama gorunumu
          store_detail TYPE string,         " Depolama eksik detay
+         store_erdat  TYPE ersda,          " Depolama yaratilma tarihi
+         store_ernam  TYPE ernam,          " Depolama yaratan
          qual_view    TYPE icon_d,         " Kalite yonetimi gorunumu
          qual_detail  TYPE string,         " Kalite eksik detay
+         qual_erdat   TYPE ersda,          " Kalite yaratilma tarihi
+         qual_ernam   TYPE ernam,          " Kalite yaratan
        END OF ty_result.
 
 *----------------------------------------------------------------------*
@@ -73,6 +89,18 @@ DATA: go_alv       TYPE REF TO cl_salv_table,
       ls_layout    TYPE salv_s_layout_key.
 
 DATA: gv_detail TYPE string.
+
+* Gorunum yaratilma bilgileri icin tipler ve veriler
+TYPES: BEGIN OF ty_view_create,
+         matnr   TYPE matnr,
+         werks   TYPE werks_d,
+         tabname TYPE tabname,
+         erdat   TYPE sy-datum,
+         ernam   TYPE cd_username,
+       END OF ty_view_create.
+
+DATA: gt_view_create TYPE TABLE OF ty_view_create,
+      gs_view_create TYPE ty_view_create.
 
 *----------------------------------------------------------------------*
 * Secim Ekrani
@@ -112,6 +140,20 @@ SELECTION-SCREEN END OF BLOCK b03.
 * Baslatma Olayi
 *----------------------------------------------------------------------*
 START-OF-SELECTION.
+
+  " Hicbir gorunum secilmediyse hepsini secilmis kabul et
+  IF p_basic IS INITIAL AND p_sales IS INITIAL AND p_purch IS INITIAL AND
+     p_mrp   IS INITIAL AND p_acct  IS INITIAL AND p_cost  IS INITIAL AND
+     p_store IS INITIAL AND p_qual  IS INITIAL.
+    p_basic = 'X'.
+    p_sales = 'X'.
+    p_purch = 'X'.
+    p_mrp   = 'X'.
+    p_acct  = 'X'.
+    p_cost  = 'X'.
+    p_store = 'X'.
+    p_qual  = 'X'.
+  ENDIF.
 
   PERFORM get_data.
   PERFORM check_views.
@@ -208,6 +250,9 @@ FORM get_data.
         AND werks = gt_marc-werks.
   ENDIF.
 
+  " Gorunum yaratilma bilgileri (CDHDR/CDPOS)
+  PERFORM get_view_creation_data.
+
 ENDFORM.
 
 *&---------------------------------------------------------------------*
@@ -297,6 +342,9 @@ FORM check_views.
                                           gv_detail
                                           lv_has_missing.
         gs_result-basic_detail = gv_detail.
+        " Temel veri yaratilma bilgisi
+        gs_result-basic_erdat = gs_mara-ersda.
+        gs_result-basic_ernam = gs_mara-ernam.
       ENDIF.
 
       " Uretim yeri kaydi olmayan gorunumler icin eksik isaretle
@@ -465,6 +513,10 @@ FORM run_view_checks USING    ps_mara TYPE mara
                                         pv_has_missing.
     ps_result-qual_detail = gv_detail.
   ENDIF.
+
+  " Gorunum yaratilma tarih ve yaratan bilgilerini doldur
+  PERFORM set_view_creation_info USING    ps_mara ps_marc
+                                 CHANGING ps_result.
 
 ENDFORM.
 
@@ -802,6 +854,169 @@ FORM check_quality_view USING    pv_matnr TYPE matnr
 ENDFORM.
 
 *&---------------------------------------------------------------------*
+*& Form GET_VIEW_CREATION_DATA
+*&---------------------------------------------------------------------*
+*& Degisiklik belgeleri uzerinden gorunum yaratilma bilgilerini okur
+*&---------------------------------------------------------------------*
+FORM get_view_creation_data.
+
+  DATA: lt_cdhdr TYPE TABLE OF cdhdr,
+        ls_cdhdr TYPE cdhdr,
+        lt_cdpos TYPE TABLE OF cdpos,
+        ls_cdpos TYPE cdpos,
+        ls_view_create TYPE ty_view_create,
+        lv_werks TYPE werks_d.
+
+  CHECK gt_mara IS NOT INITIAL.
+
+  " Degisiklik belgesi basliklarini oku
+  SELECT * FROM cdhdr INTO TABLE lt_cdhdr
+    FOR ALL ENTRIES IN gt_mara
+    WHERE objectclas = 'MATERIAL'
+      AND objectid = gt_mara-matnr.
+
+  CHECK lt_cdhdr IS NOT INITIAL.
+
+  " Degisiklik belgesi kalemlerini oku - sadece INSERT islemleri
+  SELECT * FROM cdpos INTO TABLE lt_cdpos
+    FOR ALL ENTRIES IN lt_cdhdr
+    WHERE objectclas = lt_cdhdr-objectclas
+      AND objectid  = lt_cdhdr-objectid
+      AND changenr  = lt_cdhdr-changenr
+      AND chngind   = 'I'
+      AND tabname   IN ('MARA','MARC','MVKE','MBEW','MARD','QMAT').
+
+  " Her tablo kaydi icin ilk yaratilma tarihini belirle
+  SORT lt_cdpos BY objectid tabname tabkey.
+  DELETE ADJACENT DUPLICATES FROM lt_cdpos COMPARING objectid tabname tabkey.
+
+  LOOP AT lt_cdpos INTO ls_cdpos.
+    READ TABLE lt_cdhdr INTO ls_cdhdr
+      WITH KEY objectclas = ls_cdpos-objectclas
+               objectid  = ls_cdpos-objectid
+               changenr  = ls_cdpos-changenr.
+    CHECK sy-subrc = 0.
+
+    CLEAR ls_view_create.
+    ls_view_create-matnr   = ls_cdpos-objectid(18).
+    ls_view_create-tabname = ls_cdpos-tabname.
+    ls_view_create-erdat   = ls_cdhdr-udate.
+    ls_view_create-ernam   = ls_cdhdr-username.
+
+    CASE ls_cdpos-tabname.
+      WHEN 'MARC' OR 'MARD' OR 'MBEW' OR 'QMAT'.
+        " TABKEY: MATNR(18) + WERKS(4)
+        lv_werks = ls_cdpos-tabkey+18(4).
+        ls_view_create-werks = lv_werks.
+      WHEN OTHERS.
+        CLEAR ls_view_create-werks.
+    ENDCASE.
+
+    APPEND ls_view_create TO gt_view_create.
+  ENDLOOP.
+
+  " En eski tarihe gore sirala ve tekrarlari kaldir
+  SORT gt_view_create BY matnr werks tabname erdat.
+  DELETE ADJACENT DUPLICATES FROM gt_view_create
+    COMPARING matnr werks tabname.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form SET_VIEW_CREATION_INFO
+*&---------------------------------------------------------------------*
+*& Her gorunum icin yaratilma tarihi ve yaratan bilgisini doldurur
+*&---------------------------------------------------------------------*
+FORM set_view_creation_info USING    ps_mara TYPE mara
+                                     ps_marc TYPE marc
+                            CHANGING ps_result TYPE ty_result.
+
+  DATA: ls_vc TYPE ty_view_create.
+
+  " 1. Temel veri gorunumu - MARA yaratilma tarihi
+  ps_result-basic_erdat = ps_mara-ersda.
+  ps_result-basic_ernam = ps_mara-ernam.
+
+  " 2. Satis gorunumu - MVKE kaydi olusturma
+  READ TABLE gt_view_create INTO ls_vc
+    WITH KEY matnr = ps_mara-matnr werks = space tabname = 'MVKE'.
+  IF sy-subrc = 0.
+    ps_result-sales_erdat = ls_vc-erdat.
+    ps_result-sales_ernam = ls_vc-ernam.
+  ELSEIF ps_result-sales_view = icon_led_green.
+    " CDHDR kaydi bulunamazsa MARA yaratilma tarihine don
+    ps_result-sales_erdat = ps_mara-ersda.
+    ps_result-sales_ernam = ps_mara-ernam.
+  ENDIF.
+
+  " 3. Satin alma / MRP / Maliyetlendirme - MARC kaydi olusturma
+  READ TABLE gt_view_create INTO ls_vc
+    WITH KEY matnr = ps_marc-matnr werks = ps_marc-werks tabname = 'MARC'.
+  IF sy-subrc = 0.
+    IF ps_result-purch_view IS NOT INITIAL.
+      ps_result-purch_erdat = ls_vc-erdat.
+      ps_result-purch_ernam = ls_vc-ernam.
+    ENDIF.
+    IF ps_result-mrp_view IS NOT INITIAL.
+      ps_result-mrp_erdat = ls_vc-erdat.
+      ps_result-mrp_ernam = ls_vc-ernam.
+    ENDIF.
+    IF ps_result-cost_view IS NOT INITIAL.
+      ps_result-cost_erdat = ls_vc-erdat.
+      ps_result-cost_ernam = ls_vc-ernam.
+    ENDIF.
+  ELSE.
+    " CDHDR kaydi bulunamazsa MARA yaratilma tarihine don
+    IF ps_result-purch_view = icon_led_green.
+      ps_result-purch_erdat = ps_mara-ersda.
+      ps_result-purch_ernam = ps_mara-ernam.
+    ENDIF.
+    IF ps_result-mrp_view = icon_led_green.
+      ps_result-mrp_erdat = ps_mara-ersda.
+      ps_result-mrp_ernam = ps_mara-ernam.
+    ENDIF.
+    IF ps_result-cost_view = icon_led_green.
+      ps_result-cost_erdat = ps_mara-ersda.
+      ps_result-cost_ernam = ps_mara-ernam.
+    ENDIF.
+  ENDIF.
+
+  " 4. Muhasebe - MBEW kaydi olusturma
+  READ TABLE gt_view_create INTO ls_vc
+    WITH KEY matnr = ps_marc-matnr werks = ps_marc-werks tabname = 'MBEW'.
+  IF sy-subrc = 0.
+    ps_result-acct_erdat = ls_vc-erdat.
+    ps_result-acct_ernam = ls_vc-ernam.
+  ELSEIF ps_result-acct_view = icon_led_green.
+    ps_result-acct_erdat = ps_mara-ersda.
+    ps_result-acct_ernam = ps_mara-ernam.
+  ENDIF.
+
+  " 5. Depolama - MARD kaydi olusturma
+  READ TABLE gt_view_create INTO ls_vc
+    WITH KEY matnr = ps_marc-matnr werks = ps_marc-werks tabname = 'MARD'.
+  IF sy-subrc = 0.
+    ps_result-store_erdat = ls_vc-erdat.
+    ps_result-store_ernam = ls_vc-ernam.
+  ELSEIF ps_result-store_view = icon_led_green.
+    ps_result-store_erdat = ps_mara-ersda.
+    ps_result-store_ernam = ps_mara-ernam.
+  ENDIF.
+
+  " 6. Kalite yonetimi - QMAT kaydi olusturma
+  READ TABLE gt_view_create INTO ls_vc
+    WITH KEY matnr = ps_marc-matnr werks = ps_marc-werks tabname = 'QMAT'.
+  IF sy-subrc = 0.
+    ps_result-qual_erdat = ls_vc-erdat.
+    ps_result-qual_ernam = ls_vc-ernam.
+  ELSEIF ps_result-qual_view = icon_led_green.
+    ps_result-qual_erdat = ps_mara-ersda.
+    ps_result-qual_ernam = ps_mara-ernam.
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
 *& Form DISPLAY_ALV
 *&---------------------------------------------------------------------*
 *& ALV raporunu olusturur ve goruntuler
@@ -903,7 +1118,8 @@ FORM display_alv.
           go_column->set_medium_text( 'Depo Yeri' ).
           go_column->set_long_text( 'Depo Yeri' ).
 
-          " Gorunum kolonlari - ikon + detay yan yana
+          " Gorunum kolonlari - ikon + detay + yaratilma tarihi + yaratan
+          " Temel Veri
           go_column = go_columns->get_column( 'BASIC_VIEW' ).
           go_column->set_short_text( 'Temel' ).
           go_column->set_medium_text( 'Temel Veri' ).
@@ -914,6 +1130,17 @@ FORM display_alv.
           go_column->set_medium_text( 'Temel Detay' ).
           go_column->set_long_text( 'Temel Veri Eksik Detay' ).
 
+          go_column = go_columns->get_column( 'BASIC_ERDAT' ).
+          go_column->set_short_text( 'TemelTar' ).
+          go_column->set_medium_text( 'Temel Yrt.Tar' ).
+          go_column->set_long_text( 'Temel Veri Yaratilma Tarihi' ).
+
+          go_column = go_columns->get_column( 'BASIC_ERNAM' ).
+          go_column->set_short_text( 'TemelYrt' ).
+          go_column->set_medium_text( 'Temel Yaratan' ).
+          go_column->set_long_text( 'Temel Veri Yaratan Kullanici' ).
+
+          " Satis
           go_column = go_columns->get_column( 'SALES_VIEW' ).
           go_column->set_short_text( 'Satis' ).
           go_column->set_medium_text( 'Satis Gor.' ).
@@ -924,6 +1151,17 @@ FORM display_alv.
           go_column->set_medium_text( 'Satis Detay' ).
           go_column->set_long_text( 'Satis Eksik Detay' ).
 
+          go_column = go_columns->get_column( 'SALES_ERDAT' ).
+          go_column->set_short_text( 'SatisTar' ).
+          go_column->set_medium_text( 'Satis Yrt.Tar' ).
+          go_column->set_long_text( 'Satis Yaratilma Tarihi' ).
+
+          go_column = go_columns->get_column( 'SALES_ERNAM' ).
+          go_column->set_short_text( 'SatisYrt' ).
+          go_column->set_medium_text( 'Satis Yaratan' ).
+          go_column->set_long_text( 'Satis Yaratan Kullanici' ).
+
+          " Satin Alma
           go_column = go_columns->get_column( 'PURCH_VIEW' ).
           go_column->set_short_text( 'SatAlma' ).
           go_column->set_medium_text( 'Satin Alma' ).
@@ -934,6 +1172,17 @@ FORM display_alv.
           go_column->set_medium_text( 'SatAlma Detay' ).
           go_column->set_long_text( 'Satin Alma Eksik Detay' ).
 
+          go_column = go_columns->get_column( 'PURCH_ERDAT' ).
+          go_column->set_short_text( 'SAlmTar' ).
+          go_column->set_medium_text( 'SatAlma Yrt.Tar' ).
+          go_column->set_long_text( 'Satin Alma Yaratilma Tarihi' ).
+
+          go_column = go_columns->get_column( 'PURCH_ERNAM' ).
+          go_column->set_short_text( 'SAlmYrt' ).
+          go_column->set_medium_text( 'SatAlma Yaratan' ).
+          go_column->set_long_text( 'Satin Alma Yaratan Kullanici' ).
+
+          " MRP
           go_column = go_columns->get_column( 'MRP_VIEW' ).
           go_column->set_short_text( 'MRP' ).
           go_column->set_medium_text( 'MRP Gor.' ).
@@ -944,6 +1193,17 @@ FORM display_alv.
           go_column->set_medium_text( 'MRP Detay' ).
           go_column->set_long_text( 'MRP Eksik Detay' ).
 
+          go_column = go_columns->get_column( 'MRP_ERDAT' ).
+          go_column->set_short_text( 'MRPTar' ).
+          go_column->set_medium_text( 'MRP Yrt.Tar' ).
+          go_column->set_long_text( 'MRP Yaratilma Tarihi' ).
+
+          go_column = go_columns->get_column( 'MRP_ERNAM' ).
+          go_column->set_short_text( 'MRPYrt' ).
+          go_column->set_medium_text( 'MRP Yaratan' ).
+          go_column->set_long_text( 'MRP Yaratan Kullanici' ).
+
+          " Muhasebe
           go_column = go_columns->get_column( 'ACCT_VIEW' ).
           go_column->set_short_text( 'Muhasebe' ).
           go_column->set_medium_text( 'Muhasebe Gor.' ).
@@ -954,6 +1214,17 @@ FORM display_alv.
           go_column->set_medium_text( 'Muhasebe Detay' ).
           go_column->set_long_text( 'Muhasebe Eksik Detay' ).
 
+          go_column = go_columns->get_column( 'ACCT_ERDAT' ).
+          go_column->set_short_text( 'MuhTar' ).
+          go_column->set_medium_text( 'Muh. Yrt.Tar' ).
+          go_column->set_long_text( 'Muhasebe Yaratilma Tarihi' ).
+
+          go_column = go_columns->get_column( 'ACCT_ERNAM' ).
+          go_column->set_short_text( 'MuhYrt' ).
+          go_column->set_medium_text( 'Muh. Yaratan' ).
+          go_column->set_long_text( 'Muhasebe Yaratan Kullanici' ).
+
+          " Maliyetlendirme
           go_column = go_columns->get_column( 'COST_VIEW' ).
           go_column->set_short_text( 'Maliyet' ).
           go_column->set_medium_text( 'Maliyetlendirme' ).
@@ -964,6 +1235,17 @@ FORM display_alv.
           go_column->set_medium_text( 'Maliyet Detay' ).
           go_column->set_long_text( 'Maliyetlendirme Eksik Detay' ).
 
+          go_column = go_columns->get_column( 'COST_ERDAT' ).
+          go_column->set_short_text( 'MalTar' ).
+          go_column->set_medium_text( 'Maliyet Yrt.Tar' ).
+          go_column->set_long_text( 'Maliyetlendirme Yaratilma Tarihi' ).
+
+          go_column = go_columns->get_column( 'COST_ERNAM' ).
+          go_column->set_short_text( 'MalYrt' ).
+          go_column->set_medium_text( 'Maliyet Yaratan' ).
+          go_column->set_long_text( 'Maliyetlendirme Yaratan Kullanici' ).
+
+          " Depolama
           go_column = go_columns->get_column( 'STORE_VIEW' ).
           go_column->set_short_text( 'Depolama' ).
           go_column->set_medium_text( 'Depolama Gor.' ).
@@ -974,6 +1256,17 @@ FORM display_alv.
           go_column->set_medium_text( 'Depolama Detay' ).
           go_column->set_long_text( 'Depolama Eksik Detay' ).
 
+          go_column = go_columns->get_column( 'STORE_ERDAT' ).
+          go_column->set_short_text( 'DepoTar' ).
+          go_column->set_medium_text( 'Depo Yrt.Tar' ).
+          go_column->set_long_text( 'Depolama Yaratilma Tarihi' ).
+
+          go_column = go_columns->get_column( 'STORE_ERNAM' ).
+          go_column->set_short_text( 'DepoYrt' ).
+          go_column->set_medium_text( 'Depo Yaratan' ).
+          go_column->set_long_text( 'Depolama Yaratan Kullanici' ).
+
+          " Kalite Yonetimi
           go_column = go_columns->get_column( 'QUAL_VIEW' ).
           go_column->set_short_text( 'Kalite' ).
           go_column->set_medium_text( 'Kalite Yon.' ).
@@ -983,6 +1276,16 @@ FORM display_alv.
           go_column->set_short_text( 'KalDet' ).
           go_column->set_medium_text( 'Kalite Detay' ).
           go_column->set_long_text( 'Kalite Yonetimi Eksik Detay' ).
+
+          go_column = go_columns->get_column( 'QUAL_ERDAT' ).
+          go_column->set_short_text( 'KalTar' ).
+          go_column->set_medium_text( 'Kalite Yrt.Tar' ).
+          go_column->set_long_text( 'Kalite Yaratilma Tarihi' ).
+
+          go_column = go_columns->get_column( 'QUAL_ERNAM' ).
+          go_column->set_short_text( 'KalYrt' ).
+          go_column->set_medium_text( 'Kalite Yaratan' ).
+          go_column->set_long_text( 'Kalite Yaratan Kullanici' ).
 
           " Siniflandirma gorunumunu gizle (ayri kontrol yok)
           go_column = go_columns->get_column( 'CLASS_VIEW' ).
