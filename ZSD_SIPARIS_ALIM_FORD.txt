@@ -1,0 +1,643 @@
+FUNCTION ZSD_SIPARIS_ALIM_EDI_ENT_FORD.
+*"----------------------------------------------------------------------
+*"*"Local Interface:
+*"  IMPORTING
+*"     VALUE(GT_SIPARIS) TYPE  ZSD_T_SIPARIS_ALIM_EDI
+*"     VALUE(GT_EXTRFLD) TYPE  ZSD_TT_SIPARIS_FORD2 OPTIONAL
+*"  EXPORTING
+*"     VALUE(RETURN_STATUS) TYPE  ZSD_T_RETURN_STATUS
+*"----------------------------------------------------------------------
+************************
+*import
+  DATA:lt_salesdocument       LIKE bapivbeln-vbeln,
+       lt_order_header_in     LIKE bapisdh1_del_sched,
+       lt_order_header_inx    LIKE bapisdh1x_del_sched,
+       lt_simulation          LIKE bapiflag-bapiflag,
+       lt_behave_when_error   LIKE bapiflag-bapiflag,
+       lt_logic_switch        LIKE bapisdls.
+*TABLES
+  DATA: lt_order_item_in      LIKE TABLE OF bapisditm_del_sched WITH HEADER LINE,
+        lt_order_item_inx     LIKE TABLE OF bapisditmx_del_sched WITH HEADER LINE,
+        lt_schedule_lines     LIKE TABLE OF bapischdl_del_sched WITH HEADER LINE,
+        lt_schedule_linesx    LIKE TABLE OF bapischdlx_del_sched WITH HEADER LINE,
+        lt_order_text         LIKE TABLE OF bapisdtext_del_sched WITH HEADER LINE,
+        lt_del_schedule_in    LIKE TABLE OF bapisddelschd_in_del_sched WITH HEADER LINE,
+        lt_del_schedule_inx   LIKE TABLE OF bapisddelschd_inx_del_sched WITH HEADER LINE,
+        lt_corr_cum_qty_in    LIKE TABLE OF bapisddelschd_in_corrcq WITH HEADER LINE,
+        lt_corr_cum_qty_inx   LIKE TABLE OF bapisddelschd_inx_corrcq WITH HEADER LINE,
+        lt_partners           LIKE TABLE OF bapiparnr_del_sched WITH HEADER LINE,
+        lt_schedule_ex        LIKE TABLE OF bapisdhedu WITH HEADER LINE,
+        lt_del_schedule_ex    LIKE TABLE OF bapisddelsched_ex WITH HEADER LINE,
+        lt_corr_cum_qty_ex    LIKE TABLE OF bapisddelschd_ex_corrcq WITH HEADER LINE,
+        lt_extensionex        LIKE TABLE OF bapiparex WITH HEADER LINE,
+        lt_return             LIKE TABLE OF bapiret2 WITH HEADER LINE.
+*<< Görkem değişiklik 29.04.2015 23:43:29
+  DATA: lv_vbeln_s      TYPE zsd_siparis_alim-vbeln,
+        lv_kdmat_s      TYPE zsd_siparis_alim-kdmat,
+        lv_edatu        TYPE zsd_siparis_alim-edatu,
+        lv_sira         TYPE zsd_siparis_alim-sira .
+*>> Görkem değişiklik 29.04.2015 23:43:29
+  DATA: ls_zsd_s_status TYPE zsd_s_status.
+  DATA: initial_row     TYPE i.
+  DATA: gv_eksik_veri   TYPE xfeld.
+  DATA: lv_etenr        TYPE etenr.
+  DATA: lv_message      TYPE  bapi_msg.
+  DATA: lv_index        TYPE i.
+  DATA: lv_strlen       TYPE i.
+  DATA: lv_vbeln        TYPE vbeln.
+  DATA: gs_siparis      TYPE zsd_siparis_alim_edi.
+  DATA: gs_extrfld      TYPE zsd_s_siparis_ford2.
+  DATA: lv_ilk          TYPE xfeld.
+  CLEAR gv_hatali_veri.
+  DATA :ls_extrfld   TYPE zsd_fextrfldlog,
+        ls_ex        TYPE zsd_s_siparis_ford2,
+        lv_timestamp TYPE tzonref-tstamps.
+  DATA lv_vkorg TYPE vkorg.
+  DATA : lv_mercedes,lv_zero_check.
+*-Get Timestamp
+  CLEAR:lv_timestamp.
+  GET TIME STAMP FIELD lv_timestamp.
+
+  LOOP AT gt_extrfld INTO ls_ex.
+    MOVE-CORRESPONDING ls_ex TO ls_extrfld.
+    ls_extrfld-zuser = sy-uname.
+    ls_extrfld-ztimestamp = lv_timestamp.
+    MODIFY zsd_fextrfldlog FROM ls_extrfld.
+  ENDLOOP.
+
+  CLEAR : lv_zero_check,lv_vbeln,lv_vkorg, lv_mercedes.
+
+  LOOP AT gt_siparis INTO gs_siparis. " 2100-2200-2300 Satış Organizasyonunda 0 miktar kontrolü olmasın
+    IF gs_siparis-abs_no IS NOT INITIAL. " Mercedes EDI entegrasyonunda 0'lı malzeme kontrolü olmayacak
+      lv_mercedes = 'X'.
+      lv_zero_check = 'X'.
+      EXIT.
+    ENDIF.
+
+    SELECT SINGLE vbeln
+      INTO lv_vbeln
+      FROM zsd_anlasma_no " Mercedes
+     WHERE unb_adress EQ gs_siparis-unb_adress
+       AND supplier_id EQ gs_siparis-supplier_id
+       AND kdmat EQ gs_siparis-kdmat
+       AND abs_no EQ gs_siparis-abs_no.
+
+    IF sy-subrc EQ 0.
+      SELECT SINGLE vkorg
+        INTO lv_vkorg
+        FROM vbak
+       WHERE vbeln EQ lv_vbeln.
+      IF sy-subrc EQ 0.
+        IF lv_vkorg EQ '2100' OR lv_vkorg EQ '2200' OR lv_vkorg EQ '2300' OR lv_vkorg EQ '2400' OR lv_vkorg EQ '2500' .
+          lv_zero_check = 'X'.
+          EXIT.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+
+  ENDLOOP.
+
+  IF lv_zero_check NE 'X' .
+    lv_ilk = 'X'.
+** Gelen Verilerde Boş Olarak Gönderilmiş alanlar Var mı ?
+    LOOP AT gt_siparis INTO gs_siparis WHERE  unb_adress IS INITIAL
+                       OR kdmat  IS INITIAL OR edatu  IS INITIAL OR wmeng       IS INITIAL
+                       OR status IS INITIAL OR edi_id IS INITIAL OR supplier_id IS INITIAL.
+      IF lv_ilk EQ 'X'.
+        CLEAR lv_ilk.
+        CLEAR ls_zsd_s_status.
+        ls_zsd_s_status-status_code = 'E'.
+        ls_zsd_s_status-error_code = '00'.
+        ls_zsd_s_status-message = 'Dosya İçeriği Eksik'.
+        APPEND ls_zsd_s_status TO return_status.
+      ENDIF.
+
+      initial_row = sy-tabix.
+      CLEAR return_status.
+      ls_zsd_s_status-row_id = initial_row.
+      ls_zsd_s_status-kdmat = gs_siparis-kdmat.
+      ls_zsd_s_status-unb_adress = gs_siparis-unb_adress.
+      ls_zsd_s_status-status_code = 'E'.
+
+      IF gs_siparis-unb_adress IS INITIAL.
+        gv_hata_kod   = '01'.
+        gv_eksik_veri = 'X'.
+        ls_zsd_s_status-error_code = gv_hata_kod.
+      ENDIF.
+
+      IF gs_siparis-kdmat IS INITIAL.
+        gv_hata_kod   = '02'.
+        gv_eksik_veri = 'X'.
+        ls_zsd_s_status-error_code = gv_hata_kod.
+      ENDIF.
+
+      IF gs_siparis-edatu IS INITIAL.
+        gv_hata_kod   = '03'.
+        gv_eksik_veri = 'X'.
+        ls_zsd_s_status-error_code = gv_hata_kod.
+      ENDIF.
+
+      IF gs_siparis-wmeng IS INITIAL.
+        gv_hata_kod   = '04'.
+        gv_eksik_veri = 'X'.
+        ls_zsd_s_status-error_code = gv_hata_kod.
+      ENDIF.
+
+      IF gs_siparis-status IS INITIAL.
+        gv_hata_kod   = '05'.
+        gv_eksik_veri = 'X'.
+        ls_zsd_s_status-error_code = gv_hata_kod.
+      ENDIF.
+
+      IF gs_siparis-edi_id IS INITIAL.
+        gv_hata_kod   = '06'.
+        gv_eksik_veri = 'X'.
+        ls_zsd_s_status-error_code = gv_hata_kod.
+      ENDIF.
+
+      IF gs_siparis-supplier_id IS INITIAL.
+        gv_hata_kod   = '07'.
+        gv_eksik_veri = 'X'.
+        ls_zsd_s_status-error_code = gv_hata_kod.
+      ENDIF.
+
+      APPEND ls_zsd_s_status TO return_status.
+
+    ENDLOOP.
+  ELSE.
+    lv_ilk = 'X'.
+** Gelen Verilerde Boş Olarak Gönderilmiş alanlar Var mı ?
+    LOOP AT gt_siparis INTO gs_siparis WHERE unb_adress IS INITIAL
+                       OR kdmat  IS INITIAL OR edatu  IS INITIAL
+                       OR status IS INITIAL OR edi_id IS INITIAL
+                       OR supplier_id IS INITIAL.
+      IF lv_ilk EQ 'X'.
+        CLEAR lv_ilk.
+        CLEAR ls_zsd_s_status.
+        ls_zsd_s_status-status_code = 'E'.
+        ls_zsd_s_status-error_code = '00'.
+        ls_zsd_s_status-message = 'Dosya İçeriği Eksik'.
+        APPEND ls_zsd_s_status TO return_status.
+      ENDIF.
+
+      initial_row = sy-tabix.
+      CLEAR return_status.
+      ls_zsd_s_status-row_id = initial_row.
+      ls_zsd_s_status-kdmat = gs_siparis-kdmat.
+      ls_zsd_s_status-unb_adress = gs_siparis-unb_adress.
+      ls_zsd_s_status-status_code = 'E'.
+
+      IF gs_siparis-unb_adress IS INITIAL.
+        gv_hata_kod   = '01'.
+        gv_eksik_veri = 'X'.
+        ls_zsd_s_status-error_code = gv_hata_kod.
+      ENDIF.
+
+      IF gs_siparis-kdmat IS INITIAL.
+        gv_hata_kod   = '02'.
+        gv_eksik_veri = 'X'.
+        ls_zsd_s_status-error_code = gv_hata_kod.
+      ENDIF.
+
+      IF gs_siparis-edatu IS INITIAL.
+        gv_hata_kod   = '03'.
+        gv_eksik_veri = 'X'.
+        ls_zsd_s_status-error_code = gv_hata_kod.
+      ENDIF.
+
+      IF gs_siparis-status IS INITIAL.
+        gv_hata_kod   = '05'.
+        gv_eksik_veri = 'X'.
+        ls_zsd_s_status-error_code = gv_hata_kod.
+      ENDIF.
+
+      IF gs_siparis-edi_id IS INITIAL.
+        gv_hata_kod   = '06'.
+        gv_eksik_veri = 'X'.
+        ls_zsd_s_status-error_code = gv_hata_kod.
+      ENDIF.
+
+      IF gs_siparis-supplier_id IS INITIAL.
+        gv_hata_kod   = '07'.
+        gv_eksik_veri = 'X'.
+        ls_zsd_s_status-error_code = gv_hata_kod.
+      ENDIF.
+
+      IF lv_mercedes = 'X'.
+        IF gs_siparis-abs_no IS INITIAL.
+          gv_hata_kod   = '09'.
+          gv_eksik_veri = 'X'.
+          ls_zsd_s_status-error_code = gv_hata_kod.
+        ENDIF.
+      ENDIF.
+      APPEND ls_zsd_s_status TO return_status.
+
+    ENDLOOP.
+
+  ENDIF.
+  CLEAR  zsd_ws_connect.
+  IF sy-subrc EQ 0.
+    zsd_ws_connect-log_status = 'E'.
+    zsd_ws_connect-log_msg = 'Dosya Formatı İçeriği Eksik'.
+  ELSE.
+    zsd_ws_connect-log_status = 'S'.
+    zsd_ws_connect-log_msg = 'Dosya Formatı Uyumlu.'.
+  ENDIF.
+
+  zsd_ws_connect-log_date = sy-datum.
+  zsd_ws_connect-log_time = sy-uzeit.
+
+  MODIFY zsd_ws_connect.
+**WebServis Bağlantı Kontrolü.
+
+  DATA: lv_kdmat TYPE kdmat.
+  DATA: lv_chr2 TYPE char2.
+  DATA: lv_chr5 TYPE char5.
+  DATA: lv_str TYPE string.
+  DATA: lv_uz TYPE i.
+
+  LOOP AT gt_siparis INTO gs_siparis.
+    CLEAR gt_siparis_alim.
+    gt_siparis_alim-unb_adress = gs_siparis-unb_adress.
+    gt_siparis_alim-kdmat = gs_siparis-kdmat.
+    gt_siparis_alim-edatu = gs_siparis-edatu.
+    gt_siparis_alim-wmeng = gs_siparis-wmeng.
+    gt_siparis_alim-vrkme = gs_siparis-vrkme.
+    gt_siparis_alim-status = gs_siparis-status.
+    gt_siparis_alim-edi_id = gs_siparis-edi_id.
+    gt_siparis_alim-supplier_id = gs_siparis-supplier_id.
+    gt_siparis_alim-lfnkd = gs_siparis-lfnkd.
+    gt_siparis_alim-abs_no = gs_siparis-abs_no.
+    gt_siparis_alim-agreement_num = gs_siparis-agreement_num.
+
+    CLEAR lv_vbeln.
+    IF gs_siparis-abs_no IS INITIAL.
+      SELECT SINGLE vbeln INTO lv_vbeln FROM zsd_anlasma_no
+        WHERE unb_adress  EQ gs_siparis-unb_adress AND
+              supplier_id EQ gs_siparis-supplier_id AND
+              kdmat EQ gs_siparis-kdmat. "04.11.2013 ZSD_ANLASMA_NO tablosuna SUPPLIER_ID eklendi.
+    ELSE.
+      SELECT SINGLE vbeln
+        INTO lv_vbeln
+        FROM zsd_anlasma_no " Mercedes
+       WHERE unb_adress EQ gs_siparis-unb_adress
+         AND supplier_id EQ gs_siparis-supplier_id
+         AND kdmat EQ gs_siparis-kdmat
+         AND abs_no EQ gs_siparis-abs_no.
+    ENDIF.
+
+    IF sy-subrc EQ 0.
+      gt_siparis_alim-vbeln = lv_vbeln.
+*-> xitezgel (start) 12.10.2015 FORD ASN için gerekli ekstra alanların tutulması
+      READ TABLE gt_extrfld INTO gs_extrfld INDEX sy-tabix.
+      gt_siparis_ford-vbeln = lv_vbeln.
+*-{yeni key alanlar 22.10.2015
+      gt_siparis_ford-kdmat = gs_siparis-kdmat.
+      gt_siparis_ford-edatu = gs_siparis-edatu.
+      gt_siparis_ford-edi_id = gs_siparis-edi_id.
+      gt_siparis_ford-supplier_id = gs_siparis-supplier_id.
+      gt_siparis_ford-unb_adress = gs_siparis-unb_adress.
+      gt_siparis_ford-wmeng = gs_siparis-wmeng.
+      gt_siparis_ford-vrkme = gs_siparis-vrkme.
+*-yeni key alanlar 22.10.2015}
+      gt_siparis_ford-zto   = gs_extrfld-zto.
+      gt_siparis_ford-zh5   = gs_extrfld-zh5.
+      gt_siparis_ford-zh6   = gs_extrfld-zh6.
+      gt_siparis_ford-zdckc = gs_extrfld-zdckc.
+      gt_siparis_ford-znqty = gs_extrfld-znqty.
+      gt_siparis_ford-zsdat = gs_extrfld-zsdat.
+      gt_siparis_ford-zcqty = gs_extrfld-zcqty.
+      gt_siparis_ford-zpos  = gs_extrfld-zpos.
+      APPEND gt_siparis_ford.
+*<- xitezgel (finish) 12.10.2015 FORD ASN için gerekli ekstra alanların tutulması
+    ELSE.
+      CLEAR ls_zsd_s_status.
+      gv_hata_kod = '08'.
+      gv_hatali_veri = 'X'.
+      ls_zsd_s_status-error_code = gv_hata_kod.
+      CONCATENATE gs_siparis-kdmat text-004 INTO ls_zsd_s_status-message SEPARATED BY space.
+      APPEND ls_zsd_s_status TO return_status.
+    ENDIF.
+    APPEND gt_siparis_alim.
+  ENDLOOP.
+
+  SORT gt_siparis_alim BY vbeln kdmat edatu.
+  CLEAR gs_siparis_alim.
+
+  CLEAR gv_hata.
+
+  CLEAR: lv_vbeln_s, lv_kdmat, lv_edatu, lv_sira.
+
+  LOOP AT gt_siparis_alim INTO gs_siparis_alim.
+    CLEAR gt_zsd_siparis_alim.
+    MOVE-CORRESPONDING gs_siparis_alim TO gt_zsd_siparis_alim.
+*<< Görkem değişiklik 29.04.2015 23:31:16
+    IF  lv_vbeln_s EQ gs_siparis_alim-vbeln AND
+        lv_kdmat_s EQ gs_siparis_alim-kdmat AND
+        lv_edatu   EQ gs_siparis_alim-edatu.
+      lv_sira = lv_sira + 1.
+    ELSE.
+      lv_sira = 1.
+      lv_vbeln_s  = gs_siparis_alim-vbeln.
+      lv_kdmat_s  = gs_siparis_alim-kdmat.
+      lv_edatu    = gs_siparis_alim-edatu.
+    ENDIF.
+    gt_zsd_siparis_alim-sira        = lv_sira.
+*>> Görkem değişiklik 29.04.2015 23:31:16
+    gt_zsd_siparis_alim-kayit_tarih = sy-datum.
+    gt_zsd_siparis_alim-kayit_saati = sy-uzeit.
+    APPEND gt_zsd_siparis_alim.
+
+*-{yeni key alanlar 22.10.2015
+    READ TABLE gt_siparis_ford WITH KEY vbeln = gs_siparis_alim-vbeln
+                                        kdmat = gs_siparis_alim-kdmat
+                                        edatu = gs_siparis_alim-edatu.
+    lv_index = sy-tabix.
+    IF sy-subrc EQ 0.
+      gt_siparis_ford-sira = lv_sira.
+      MODIFY gt_siparis_ford INDEX lv_index.
+    ENDIF.
+*-yeni key alanlar 22.10.2015}
+  ENDLOOP.
+
+*-> xitezgel (start) 12.10.2015 FORD ASN için gerekli ekstra alanların tutulması
+  MODIFY zsd_siparis_ford FROM TABLE gt_siparis_ford.
+*<- xitezgel (finish) 12.10.2015 FORD ASN için gerekli ekstra alanların tutulması
+
+  MODIFY zsd_siparis_alim FROM TABLE gt_zsd_siparis_alim.
+  COMMIT WORK AND WAIT.
+
+
+  LOOP AT gt_siparis_alim.
+    CLEAR lv_vkorg.
+    SELECT SINGLE vkorg INTO lv_vkorg FROM vbak WHERE vbeln EQ gt_siparis_alim-vbeln.
+
+    CASE lv_vkorg.
+      WHEN '2400' OR '2500'.
+        SELECT SINGLE ma~vkorg ma~vtweg ma~auart ma~kunnr ma~vbeln
+          mb~posnr  mb~matnr  mb~kdmat
+          INTO CORRESPONDING FIELDS OF gt_vbap
+          FROM vbak AS ma
+          INNER JOIN vbap AS mb
+          ON mb~vbeln = ma~vbeln  WHERE
+             mb~vbeln = gt_siparis_alim-vbeln AND
+             mb~kdmat = gt_siparis_alim-kdmat.
+      WHEN '2100' OR '2200' OR '2300'.
+
+        SELECT SINGLE ma~vkorg ma~vtweg ma~auart ma~kunnr ma~vbeln
+                      mb~posnr mb~matnr kn~kdmat
+                 INTO CORRESPONDING FIELDS OF gt_vbap
+                 FROM vbak AS ma
+          INNER JOIN vbpa AS pa
+          ON pa~vbeln EQ ma~vbeln
+          AND pa~parvw EQ 'WE'
+                INNER JOIN knmt AS kn
+                   ON kn~vkorg = ma~vkorg
+                  AND kn~vtweg = ma~vtweg
+                  AND kn~kunnr = pa~kunnr
+*                  and kn~matnr = mb~matnr
+                INNER JOIN vbap AS mb
+                   ON mb~vbeln = ma~vbeln
+                   AND mb~matnr EQ kn~matnr
+
+                WHERE mb~vbeln = gt_siparis_alim-vbeln
+                  AND kn~kdmat = gt_siparis_alim-kdmat.
+
+      WHEN OTHERS.
+    ENDCASE.
+
+**<-- XMGUMUSER 26.02.2016 15:05:57
+
+    IF sy-subrc = 0.
+      APPEND gt_vbap.
+    ELSE.
+** Hatalı Kayıtların Tanımlanması LOG Tablosuna yazılması.    xyemre.
+      CLEAR zsd_siparis_log.
+      CLEAR ls_zsd_s_status.
+
+      initial_row = sy-tabix.
+      CLEAR return_status.
+      ls_zsd_s_status-row_id = initial_row.
+      ls_zsd_s_status-kdmat = gt_siparis_alim-kdmat.
+      ls_zsd_s_status-unb_adress = gs_siparis-unb_adress.
+      ls_zsd_s_status-status_code = 'E'.
+      ls_zsd_s_status-error_code = '88'.
+      ls_zsd_s_status-message = 'Gelen Ham Veri ile Anlasma Uyusmuyor Lütfen Kontrol Ediniz'.
+      APPEND ls_zsd_s_status TO return_status.
+      gv_hatali_veri = 'X'.
+      zsd_siparis_log-vbeln =   gt_siparis_alim-vbeln.
+      zsd_siparis_log-kdmat = gt_siparis_alim-kdmat.
+      zsd_siparis_log-success = 'E'.
+      zsd_siparis_log-islem_tarih = sy-datum.
+      zsd_siparis_log-islem_saati = sy-uzeit.
+      MODIFY zsd_siparis_log.
+    ENDIF.
+  ENDLOOP.
+*>BEDK950288         AAKPUNAR (AAKPUNAR)        BSU-1616: EE FORD EDI SON TESLIMAT NO BILGISI
+  LOOP AT gt_vbap.
+
+    SELECT SINGLE ettyp
+    INTO gt_vbap-ettyp
+    FROM vbep WHERE
+      vbeln = gt_vbap-vbeln AND
+      posnr = gt_vbap-posnr.
+
+    CLEAR gs_siparis_alim.
+
+    READ TABLE gt_siparis_alim INTO gs_siparis_alim INDEX sy-tabix."WITH KEY VBELN = GT_VBAP-VBELN KDMAT = GT_VBAP-KDMAT.
+    "    IF SY-SUBRC EQ 0.
+    " kdmat ve vbeln alanının aynı gelmesi durumunda her zaman ilk kayıt alma durumunun giderilmesi.
+    IF gs_siparis_alim-vbeln EQ gt_vbap-vbeln AND gs_siparis_alim-kdmat EQ gt_vbap-kdmat.
+      gt_vbap-wmeng = gs_siparis_alim-wmeng.
+      gt_vbap-edatu = gs_siparis_alim-edatu.
+      CLEAR lv_vkorg.
+      SELECT SINGLE vkorg INTO lv_vkorg FROM vbak WHERE vbeln EQ gt_siparis_alim-vbeln.
+      IF lv_vkorg EQ '2100' OR lv_vkorg EQ '2200' OR lv_vkorg EQ '2300'.
+        IF gt_siparis_alim-agreement_num EQ 'DELFOR'.
+          SELECT lfnkd
+            INTO gt_siparis_alim-lfnkd
+            FROM zsd_siparis_alim
+            UP TO 1 ROWS
+            WHERE vbeln = gt_siparis_alim-vbeln
+            AND kdmat = gt_siparis_alim-kdmat
+            AND agreement_num = 'DELJIT'
+            AND lfnkd NE ''
+            ORDER BY kayit_tarih DESCENDING kayit_saati DESCENDING.
+          ENDSELECT.
+          IF sy-subrc EQ 0.
+            gt_vbap-lfnkd = gt_siparis_alim-lfnkd.
+          ENDIF.
+        ELSE.
+          gv_hatali_veri = 'X'.
+        ENDIF.
+      ELSE.
+        gt_vbap-lfnkd = gs_siparis_alim-lfnkd.
+      ENDIF.
+    ENDIF.
+    SELECT SINGLE lfrel tddat mbdat lddat wadat
+            INTO CORRESPONDING FIELDS OF gt_vbap FROM vbep
+                  WHERE vbeln = gt_vbap-vbeln AND
+                        posnr = gt_vbap-posnr.
+    MODIFY gt_vbap.
+    CLEAR gt_vbap.
+  ENDLOOP.
+*<BEDK950288         AAKPUNAR (AAKPUNAR)        BSU-1616: EE FORD EDI SON TESLIMAT NO BILGISI
+
+
+** xyemre değişiklik 20092013.
+  CLEAR: lt_del_schedule_inx,lt_del_schedule_inx,lt_schedule_lines,lt_order_item_inx,lt_order_item_in.
+  REFRESH: lt_del_schedule_inx[],lt_del_schedule_inx[],lt_schedule_lines[],lt_order_item_inx[],lt_order_item_in[].
+** xyemre değişiklik 20092013.
+
+  CLEAR gv_vbeln.
+
+  SORT gt_vbap BY vbeln posnr.
+
+* farklı vbeln gelme durumu 19.11.2013 xyemre.
+  CLEAR: gt_vbap_temp, gt_vbap_temp[].
+  gt_vbap_temp[] = gt_vbap[].
+
+  DELETE ADJACENT DUPLICATES FROM gt_vbap_temp COMPARING vbeln.
+* farklı vbeln gelme durumu 19.11.2013 xyemre.
+
+  CLEAR lv_index.
+
+  IF gv_hatali_veri NE 'X' AND gv_eksik_veri NE 'X'.
+
+    LOOP AT gt_vbap_temp. " farklı vbeln gelme durumu 19.11.2013 xyemre.
+
+      LOOP AT gt_vbap WHERE vbeln EQ gt_vbap_temp-vbeln. " farklı vbeln gelme durumu 19.11.2013 xyemre.
+        gv_vbeln = gt_vbap-vbeln.
+        lv_etenr = lv_etenr + 1.
+*DOCUMENT
+        lt_order_header_inx-updateflag = 'U'.
+        gt_vbap-etenr = lv_etenr.
+*ITEM
+        lt_order_item_in-itm_number =  gt_vbap-posnr.
+        APPEND lt_order_item_in.
+        lt_order_item_inx-itm_number = gt_vbap-posnr.
+        lt_order_item_inx-updateflag = 'U'.
+        APPEND lt_order_item_inx.
+*SCHEDULE LINE
+
+        lt_schedule_lines-itm_number =  gt_vbap-posnr.
+        lt_schedule_lines-sched_line =  lv_etenr.
+        lt_schedule_lines-req_date   =  gt_vbap-edatu.
+        lt_schedule_lines-date_type = '1'.
+        lt_schedule_lines-req_qty = gt_vbap-wmeng.
+        lt_schedule_lines-rel_type = '1'.
+        APPEND lt_schedule_lines.
+
+        lt_schedule_linesx-itm_number =  gt_vbap-posnr.
+        lt_schedule_linesx-sched_line =  lv_etenr.
+        lt_schedule_linesx-updateflag = 'I'.
+        lt_schedule_linesx-req_date = 'X'.
+        lt_schedule_linesx-date_type = 'X'.
+        lt_schedule_linesx-req_qty = 'X' .
+        lt_schedule_linesx-rel_type = 'X'.
+        APPEND lt_schedule_linesx.
+
+        DATA: lv_posnr TYPE posnr.
+
+        IF lv_posnr NE gt_vbap-posnr.
+          lt_del_schedule_in-itm_number =  gt_vbap-posnr.
+          lt_del_schedule_in-rel_type = '1'.
+          lt_del_schedule_in-dlvschedno = gt_siparis_alim-edi_id .
+          lt_del_schedule_in-dlvscheddate = sy-datum.
+          IF NOT gt_vbap-lfnkd IS INITIAL.  "Son teslimat
+            lt_del_schedule_in-last_del_rec = gt_vbap-lfnkd.
+          ENDIF.
+          APPEND lt_del_schedule_in.
+          CLEAR  lt_del_schedule_in.
+
+          lt_del_schedule_inx-itm_number =  gt_vbap-posnr.
+          lt_del_schedule_inx-rel_type = '1'.
+          lt_del_schedule_inx-dlvschedno = 'X'.
+          lt_del_schedule_inx-dlvscheddate = 'X'.
+
+          IF NOT gt_vbap-lfnkd IS INITIAL.  "Son teslimat
+            lt_del_schedule_inx-last_del_rec ='X'.
+          ENDIF.
+
+          APPEND lt_del_schedule_inx.
+          MOVE gt_vbap-posnr TO lv_posnr.
+        ENDIF.
+      ENDLOOP.
+******************************************************************************************************
+
+      CALL FUNCTION 'BAPI_SALES_DEL_SCHEDULE_CREATE'
+        EXPORTING
+          salesdocument    = gv_vbeln "gt_vbap-vbeln
+          order_header_inx = lt_order_header_inx
+        TABLES
+          schedule_lines   = lt_schedule_lines
+          schedule_linesx  = lt_schedule_linesx
+          del_schedule_in  = lt_del_schedule_in
+          del_schedule_inx = lt_del_schedule_inx
+          return           = lt_return.
+
+      READ TABLE lt_return WITH KEY type = 'E' .
+      IF sy-subrc EQ 0.
+        gv_hata = 'X'.
+        CLEAR lv_message.
+        lv_message = lt_return-message.
+        zsd_siparis_log-message =  lt_return-message.
+
+        CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+
+        ROLLBACK WORK.
+      ELSE.
+        gv_success = 'S'.
+        CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+          EXPORTING
+            wait = 'X'.
+
+      ENDIF.
+
+      zsd_siparis_log-vbeln = gv_vbeln." gt_vbap-vbeln.
+      zsd_siparis_log-kdmat = gt_vbap-kdmat..
+      zsd_siparis_log-success = gv_success.
+      zsd_siparis_log-islem_tarih = sy-datum.
+      zsd_siparis_log-islem_saati = sy-uzeit.
+
+      MODIFY zsd_siparis_log.
+*/
+      IF gv_hata EQ 'X'.
+        CLEAR ls_zsd_s_status.
+        ls_zsd_s_status-status_code = 'E'.
+        ls_zsd_s_status-error_code = '98'.
+        ls_zsd_s_status-message = lv_message. "'Veri Aktarim Hatası'.
+        ls_zsd_s_status-vbeln = gv_vbeln.
+        APPEND ls_zsd_s_status TO  return_status.
+      ELSE.
+        CLEAR ls_zsd_s_status.
+        ls_zsd_s_status-status_code = 'S'.
+        ls_zsd_s_status-message = 'Aktarim Basarili Sekilde Gerceklesti'.
+        ls_zsd_s_status-vbeln = gv_vbeln.
+        APPEND ls_zsd_s_status TO  return_status.
+      ENDIF.
+*/
+
+      CLEAR gt_vbap.
+      CLEAR lv_etenr.
+
+      " farklı vbeln gelme durumu 19.11.2013 xyemre.
+      CLEAR: lt_del_schedule_inx,lt_del_schedule_inx,lt_schedule_lines,lt_order_item_inx,lt_order_item_in.
+      CLEAR: lt_del_schedule_in,lt_schedule_linesx. " farklı vbeln gelme durumu 19.11.2013 xyemre.
+      REFRESH: lt_del_schedule_inx[],lt_del_schedule_inx[],lt_schedule_lines[],lt_order_item_inx[],lt_order_item_in[].
+      REFRESH: lt_del_schedule_in[],lt_schedule_linesx[]. " farklı vbeln gelme durumu 19.11.2013 xyemre.
+
+      CLEAR : lv_posnr.
+      " farklı vbeln gelme durumu 19.11.2013 xyemre.
+      CLEAR : gv_hata,gv_success.
+    ENDLOOP. " farklı vbeln gelme durumu 19.11.2013 xyemre.
+
+  ELSE.
+    CLEAR ls_zsd_s_status.
+    ls_zsd_s_status-status_code = 'E'.
+    ls_zsd_s_status-error_code = '97'.
+    ls_zsd_s_status-message = 'Veri Aktarım Hatası - Dosya Eksik Yada Hatalı Veriler İçeriyor'.
+    APPEND ls_zsd_s_status TO  return_status.
+
+  ENDIF.
+ENDFUNCTION.
